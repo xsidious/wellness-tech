@@ -22,10 +22,15 @@ export function LoginPanel({ nextPath = "" }: { nextPath?: string }) {
     <div className="form">
       {!email ? (
         <form action={requestAction}>
-          <p className="muted">Step 1 of 3. Use the admin email, then the code that appears here.</p>
-          <label>Email<input name="email" type="email" required autoComplete="username" placeholder="admin@wellnesstech.demo" /></label>
+          <p className="muted">Step 1 of 3. Practice / affiliate email, then the code that appears here.</p>
+          <label aria-hidden="true" style={{ position: "absolute", left: "-10000px", height: 0, overflow: "hidden" }}>
+            Company website
+            <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
+          </label>
+          <label>Email<input name="email" type="email" required autoComplete="username" placeholder="owner@fairfax.demo" /></label>
           <button className="btn btn-accent" disabled={requesting}>{requesting ? "Sending code…" : "Email me a code"}</button>
           {requested?.error ? <p className="error">{requested.error}</p> : null}
+          <p className="muted">Staff admin? <a href="/admin/login">Use the admin password login</a>.</p>
         </form>
       ) : null}
       {email && !onPin ? (

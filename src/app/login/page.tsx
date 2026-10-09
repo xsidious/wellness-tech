@@ -10,9 +10,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="wrap page-banner">
         <div className="page-banner-grid">
           <div className="stack">
-            <span className="kicker">Sign in</span>
+            <span className="kicker">Practice portal</span>
             <h1>One login for the practice.</h1>
-            <p className="lede">Three steps: your email, the code shown on this page, then PIN 246810. The admin dashboard opens after the PIN.</p>
+            <p className="lede">
+              Three steps: email → one-time code → 6-digit PIN. Demo PIN is 246810.
+              Staff catalog admins should use the{" "}
+              <a href="/admin/login">dedicated admin login</a> instead.
+            </p>
             <LoginPanel nextPath={nextPath} />
           </div>
           <img className="banner-photo" src={photos.consult} alt="A clinician in consultation" />

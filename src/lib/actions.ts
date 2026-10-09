@@ -10,6 +10,7 @@ import { clearLogin, readPending, readUserId, setLogin, setPending } from "@/lib
 import { canOrder, fulfillmentGroups, isProductClass, shippingCents } from "@/lib/rules";
 import { createExternalOrder, emitOrderEvent, ensurePatient, nextEvent, openRxcoreOrder } from "@/lib/rxcore";
 import { rolesOf } from "@/lib/guard";
+import { honeypotTripped, rateLimit, verifyTurnstile } from "@/lib/anti-bot";
 
 function sandboxCode(code: string) {
   return process.env.SANDBOX_AUTH === "false" ? "" : code;
@@ -26,7 +27,41 @@ function signInError(error: unknown) {
   return message.slice(0, 180);
 }
 
+/** One-step staff admin login (email + password) — clearer than magic code + PIN. */
+export async function adminPasswordLogin(formData: FormData) {
+  try {
+    if (honeypotTripped(formData)) return { error: "Unable to sign in." };
+    const email = String(formData.get("email") || "").trim().toLowerCase();
+    const password = String(formData.get("password") || "");
+    const turnstile = String(formData.get("cf-turnstile-response") || "");
+    if (!email.includes("@") || password.length < 8) return { error: "Enter admin email and password." };
+
+    const limited = rateLimit(`wt-admin-login:${email}`, 8, 10 * 60 * 1000);
+    if (!limited.ok) return { error: "Too many attempts. Wait a few minutes." };
+
+    const bot = await verifyTurnstile(turnstile);
+    if (!bot.ok) return { error: bot.error || "Bot check failed." };
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user?.passwordHash || !rolesOf(user.roles).includes("admin")) {
+      return { error: "Invalid admin credentials." };
+    }
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      return { error: "Invalid admin credentials." };
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await audit({ actorId: user.id, action: "auth.admin_password_login", object: user.email });
+    await setLogin(user.id);
+    const next = String(formData.get("next") || "");
+    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/admin";
+    redirect(safeNext.startsWith("/admin") ? safeNext : "/admin");
+  } catch (error) {
+    return { error: signInError(error) };
+  }
+}
+
 export async function requestMagic(formData: FormData) {
+  if (honeypotTripped(formData)) return { error: "Unable to send code." };
   const email = String(formData.get("email") || "").trim().toLowerCase();
   if (!email.includes("@")) return { error: "Enter a valid email." };
   try {

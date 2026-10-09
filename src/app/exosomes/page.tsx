@@ -1,7 +1,6 @@
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";
 import { photos } from "@/lib/photos";
-import { money } from "@/lib/money";
 import { exosomeCatalog, exosomeUse } from "@/lib/exosome-catalog";
 
 export default function ExosomesPage() {
@@ -19,10 +18,13 @@ export default function ExosomesPage() {
       <PageBanner
         kicker="Exosomes"
         title="Celexo and Lumidor, listed for practices."
-        lede="Celexo lines are for topical use. Lumidor lines are exosome-infused topicals. Unit prices are from the order form. Supplier payout is not set yet, so checkout stays off."
+        lede="Celexo lines are for topical use. Lumidor lines are exosome-infused topicals. Catalog listed below — pricing available upon request."
         image={photos.exosomes}
       />
       <section className="wrap section stack">
+        <p className="note" style={{ margin: 0 }}>
+          Pricing available upon request for verified practices.
+        </p>
         {[...groups.entries()].map(([category, items]) => (
           <div className="stack" key={category}>
             <h2 style={{ margin: 0 }}>{category}</h2>
@@ -30,7 +32,7 @@ export default function ExosomesPage() {
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr><th>Item</th><th>Product</th><th>Size</th><th>Unit price</th></tr>
+                  <tr><th>Item</th><th>Product</th><th>Size</th></tr>
                 </thead>
                 <tbody>
                   {items.map((item) => (
@@ -38,7 +40,6 @@ export default function ExosomesPage() {
                       <td>{item.sku}</td>
                       <td>{item.name}</td>
                       <td>{item.size}</td>
-                      <td>{money(item.priceCents)}</td>
                     </tr>
                   ))}
                 </tbody>

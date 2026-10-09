@@ -7,3 +7,5 @@ prisma/dev.db-journal
 *.log
 tsconfig.tsbuildinfo
 scripts/_tmp-*
+.vercel
+.env*.local

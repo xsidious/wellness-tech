@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const pin = await bcrypt.hash("246810", 8);
+const adminPassword = await bcrypt.hash("WellnessTech#Admin9!", 12);
 
 async function ensureOrg(slug, data) {
   return prisma.organization.upsert({
@@ -17,7 +18,13 @@ async function ensureUser(email, data) {
   if (existing) {
     await prisma.user.update({
       where: { id: existing.id },
-      data: { mfaHash: pin, mfaEnabled: true, name: data.name, roles: data.roles },
+      data: {
+        mfaHash: pin,
+        mfaEnabled: true,
+        name: data.name,
+        roles: data.roles,
+        ...(data.passwordHash ? { passwordHash: data.passwordHash } : {}),
+      },
     });
     return existing;
   }
@@ -47,6 +54,7 @@ await ensureUser("admin@wellnesstech.demo", {
   orgId: adminOrg.id,
   name: "Wellness Tech Admin",
   roles: JSON.stringify(["admin"]),
+  passwordHash: adminPassword,
 });
 
 console.log(
@@ -54,8 +62,15 @@ console.log(
     {
       ok: true,
       logins: [
-        { email: "admin@wellnesstech.demo", pin: "246810", portal: "/admin" },
-        { email: "owner@fairfax.demo", pin: "246810", portal: "/portal" },
+        {
+          email: "admin@wellnesstech.demo",
+          password: "WellnessTech#Admin9!",
+          portal: "/admin/login",
+          note: "Dedicated staff admin password login",
+        },
+        { email: "owner@fairfax.demo", pin: "246810", portal: "/login" },
+        { email: "billing@fairfax.demo", pin: "246810", portal: "/login" },
+        { email: "affiliate@sales.demo", pin: "246810", portal: "/login" },
       ],
     },
     null,

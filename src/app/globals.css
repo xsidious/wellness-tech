@@ -1,12 +1,15 @@
-/* Palette from spa interior reference: cream wall, sand plaster, stone bowl, amber glass, navy bed */
+/* Palette aligned to Wellness Tech logo (#184868) + warm cream surfaces */
 :root {
   --cream: #efeae2;
   --sand: #c9bba8;
   --stone: #b8b5ae;
   --amber: #7d4e2d;
-  --navy: #1b2a45;
-  --accent: var(--navy);
-  --ink: #121c33;
+  --brand: #184868;
+  --navy: var(--brand);
+  --accent: var(--brand);
+  --ink: #102a3d;
+  --brand-mid: #215a7a;
+  --brand-line: #2f6f90;
   --muted: #6e675c;
   --line: #d4cfc6;
   --paper: var(--cream);
@@ -91,7 +94,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .card.dark, .band { background: var(--navy); color: white; }
 .card b, .panel h2 { font-size: 26px; }
 .band { padding: 88px 0; }
-.dark-card { background: #243552; border: 1px solid #3a4d6a; }
+.dark-card { background: var(--brand-mid); border: 1px solid var(--brand-line); }
 .quick { display: flex; gap: 10px; flex-wrap: wrap; }
 .why { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px; align-items: center; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 32px; padding: 36px; }
@@ -102,12 +105,12 @@ textarea { min-height: 90px; }
 .footer { background: var(--navy); color: #d4cfc6; padding: 64px 0 32px; }
 .footer a { color: #d4cfc6; text-decoration: none; }
 .footer .grid-3 { margin-bottom: 28px; }
-.legal { border-top: 1px solid #3a4d6a; padding-top: 18px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.legal { border-top: 1px solid var(--brand-line); padding-top: 18px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
 .portal { display: grid; grid-template-columns: 268px 1fr; min-height: 100vh; background: var(--paper); }
 .side { background: var(--navy); color: white; padding: 22px 16px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; }
 .side a { color: #e4ddd2; text-decoration: none; padding: 10px 12px; border-radius: 12px; font-weight: 600; }
 .side .logo { height: 58px; margin-bottom: 8px; }
-.side a.active, .side a:hover { background: #243552; color: white; }
+.side a.active, .side a:hover { background: var(--brand-mid); color: white; }
 .main { padding: 28px; }
 .table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 16px; overflow: hidden; }
 .table th, .table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -175,7 +178,7 @@ textarea { min-height: 90px; }
   .side-out-mobile { display: block; }
   .side .btn { width: auto; padding: 8px 12px; min-height: 40px; }
   .side-links { flex-direction: row; overflow-x: auto; gap: 8px; padding-bottom: 2px; }
-  .side-links a { white-space: nowrap; background: #243552; }
+  .side-links a { white-space: nowrap; background: var(--brand-mid); }
   .main { padding: 16px; }
   .dash-head h1, .section h2, .band h2 { font-size: 1.7rem; }
   .rep { align-items: flex-start; }

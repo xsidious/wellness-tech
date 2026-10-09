@@ -6,6 +6,7 @@ import { exosomeCatalog, exosomeHoldReason, exosomeUse } from "../src/lib/exosom
 
 const prisma = new PrismaClient();
 const pin = bcrypt.hashSync("246810", 8);
+const adminPassword = bcrypt.hashSync("WellnessTech#Admin9!", 12);
 
 async function main() {
   await prisma.orderEvent.deleteMany();
@@ -84,6 +85,7 @@ async function main() {
       email: "admin@wellnesstech.demo",
       name: "Wellness Tech Admin",
       roles: JSON.stringify(["admin"]),
+      passwordHash: adminPassword,
       mfaHash: pin,
       mfaEnabled: true,
     },
@@ -258,7 +260,10 @@ async function main() {
   await prisma.patientRef.create({
     data: { orgId: fairfax.id, initials: "A.B.", rxcorePatientId: "pat_seed_ab" },
   });
-  console.log("Seeded sandbox accounts. PIN 246810. API key wt_sandbox_demo_key.");
+  console.log("Seeded sandbox accounts.");
+  console.log("Admin password login: admin@wellnesstech.demo / WellnessTech#Admin9! → /admin/login");
+  console.log("Practice PIN login: owner@fairfax.demo PIN 246810 → /login");
+  console.log("API key wt_sandbox_demo_key");
 }
 
 main()

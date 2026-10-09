@@ -33,9 +33,10 @@ model User {
   email      String    @unique
   name       String
   phone      String    @default("")
-  roles      String
-  mfaHash    String    @default("")
-  mfaEnabled Boolean   @default(false)
+  roles        String
+  passwordHash String    @default("")
+  mfaHash      String    @default("")
+  mfaEnabled   Boolean   @default(false)
   lastLoginAt DateTime?
   createdAt  DateTime  @default(now())
   credential PrescriberCredential?

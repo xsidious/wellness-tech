@@ -5,7 +5,7 @@ import { photos } from "@/lib/photos";
 const categories = [
   ["GLP-1 and weight", "Injectable and sublingual weight-management formulations.", photos.weight, "/products"],
   ["Peptides", "Practice catalog titles, reviewed before they reach a cart.", photos.peptides, "/products"],
-  ["Celexo and Lumidor", "Celexo is topical. Lumidor is an exosome-infused topical. Checkout waits on supplier payout pricing.", photos.exosomes, "/exosomes"],
+  ["Celexo and Lumidor", "Celexo is topical. Lumidor is an exosome-infused topical for licensed aesthetic practices.", photos.exosomes, "/exosomes"],
   ["Anti-aging", "NAD+ and longevity categories for licensed practices.", photos.consult, "/products"],
   ["Performance", "Recovery and sports medicine categories.", photos.supplies, "/products"],
   ["Aesthetic equipment", "Devices, ancillaries, and medical supplies.", photos.equipment, "/supplies"],
@@ -39,7 +39,7 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
       </section>
       <section className="trust" aria-label="Highlights">
         <div className="wrap">
-          <span>NPI credentialing</span><span>Role-based pricing</span><span>One invoice</span><span>Live RxCore status</span><span>Clinician education</span>
+          <span>NPI credentialing</span><span>Tiered access</span><span>One invoice</span><span>Live RxCore status</span><span>Clinician education</span>
         </div>
       </section>
       <section className="wrap section stack">
@@ -61,7 +61,7 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
         <div className="grid-3">
           <Link className="card dark" href="/signup?type=practice"><span>For practices</span><b>Prescribers</b><span>NPI-verified access. Tier 1 can order patient-specific Rx. Office stock waits for Tier 2.</span></Link>
           <Link className="card" href="/affiliates"><span>For sales partners</span><b>Affiliates</b><span>Referral links and commission on devices and supplies. Prescription classes are excluded.</span></Link>
-          <Link className="card" href="/products"><span>For procurement</span><b>Marketplace</b><span>Browse therapies and supplies. Prices appear after verification.</span></Link>
+          <Link className="card" href="/products"><span>For procurement</span><b>Marketplace</b><span>Browse therapies and supplies after your practice is verified.</span></Link>
         </div>
       </section>
       <section className="band">
@@ -86,7 +86,7 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
           <div className="stack">
             <span className="kicker">Why practices switch</span>
             <h2>Compliance, depth, and speed together.</h2>
-            <p>Quality you can defend, wholesale economics, and ordering in one B2B system.</p>
+            <p>Quality you can defend and ordering in one B2B system for licensed practices.</p>
             <p className="muted">Ideal for med spas, aesthetic clinics, concierge wellness, hormone practices, and telehealth prescribers.</p>
           </div>
         </div>
@@ -95,7 +95,7 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
         <div className="panel grid-2">
           <div className="stack">
             <span className="kicker">Register your practice</span>
-            <h2>Unlock pricing, catalogs, and protocols.</h2>
+            <h2>Unlock catalogs and clinical protocols.</h2>
             <p className="lede">Access is an account, not a one-off form. The code appears on the next screen in this sandbox.</p>
           </div>
           <form className="form" action="/signup" method="get">
