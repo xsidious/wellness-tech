@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Equipment and Supplies",
+  description: "Aesthetic equipment, devices, ancillaries, and medical supplies for licensed practices.",
+  canonicalPath: "/supplies",
+});
+
 import Link from "next/link";
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";

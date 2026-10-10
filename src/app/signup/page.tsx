@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Become a Prescriber",
+  description: "Request practice access to Wellness Tech Distribution for 503A/503B ordering.",
+  canonicalPath: "/signup",
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { SignupPanel } from "@/components/AuthPanel";
 import { photos } from "@/lib/photos";

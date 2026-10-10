@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Storefront",
+  description: "Practice-facing storefront overview for Wellness Tech Distribution.",
+  canonicalPath: "/storefront",
+});
+
 import Link from "next/link";
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";

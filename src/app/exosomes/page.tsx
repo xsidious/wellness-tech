@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Celexo and Lumidor Exosomes",
+  description: "Celexo topical and Lumidor exosome-infused products for licensed aesthetic practices.",
+  canonicalPath: "/exosomes",
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";
 import { photos } from "@/lib/photos";

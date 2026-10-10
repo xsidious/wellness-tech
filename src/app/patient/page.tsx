@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Patients",
+  description: "How patients interact with Wellness Tech fulfilled therapies through their licensed practice.",
+  canonicalPath: "/patient",
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { Concierge } from "@/components/Concierge";
 import { currentUser } from "@/lib/guard";

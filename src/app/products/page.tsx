@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Therapies and Formulary",
+  description: "RxHere 503A formulary for licensed practices. Peptides, GLP-1s, anti-aging, and more. Pricing on request.",
+  canonicalPath: "/products",
+});
+
 import Link from "next/link";
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";

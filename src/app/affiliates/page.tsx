@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Affiliates",
+  description: "Affiliate and referral partnership opportunities with Wellness Tech Distribution.",
+  canonicalPath: "/affiliates",
+});
+
 import Link from "next/link";
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";

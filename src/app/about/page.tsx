@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "About Wellness Tech",
+  description: "Wellness Tech owns the practice experience. RxHere owns the pharmacy - one account, one invoice, live order status.",
+  canonicalPath: "/about",
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";
 import { photos } from "@/lib/photos";

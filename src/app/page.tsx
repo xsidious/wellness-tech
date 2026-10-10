@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "503A and 503B Therapies for Licensed Practices",
+  description: "Compounded peptides, GLP-1s, exosomes, and clinical supplies for licensed practices - one account, one cart, RxHere fulfillment.",
+  canonicalPath: "/",
+});
+
 import Link from "next/link";
 import { MarketingShell } from "@/components/MarketingShell";
 import { photos } from "@/lib/photos";

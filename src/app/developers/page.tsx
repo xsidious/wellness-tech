@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Developers",
+  description: "Partner API and webhook documentation for Wellness Tech Distribution integrations.",
+  canonicalPath: "/developers",
+});
+
 import { redirect } from "next/navigation";
 import { createSandboxKey, placeSandboxApiOrder } from "@/lib/actions";
 import { requireUser, rolesOf } from "@/lib/guard";

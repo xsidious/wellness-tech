@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Contact",
+  description: "Contact Wellness Tech Distribution for practice onboarding, formulary questions, and partnership.",
+  canonicalPath: "/contact",
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";
 import { photos } from "@/lib/photos";

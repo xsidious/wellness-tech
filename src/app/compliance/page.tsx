@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Compliance",
+  description: "How Wellness Tech structures 503A patient-specific and 503B office-use ordering for licensed practices.",
+  canonicalPath: "/compliance",
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { PageBanner } from "@/components/PageBanner";
 import { photos } from "@/lib/photos";

@@ -1,3 +1,13 @@
+import type { Metadata } from "next";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Practice Login",
+  description: "Sign in to your Wellness Tech Distribution practice account.",
+  canonicalPath: "/login",
+  noIndex: true,
+});
+
 import { MarketingShell } from "@/components/MarketingShell";
 import { LoginPanel } from "@/components/AuthPanel";
 import { photos } from "@/lib/photos";
