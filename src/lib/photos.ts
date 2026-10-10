@@ -29,7 +29,7 @@ const CATEGORY_SLUGS: Record<string, string> = {
   "skin and hair care": "skin-hair",
   wellness: "wellness",
   peptides: "peptides",
-  "peptide stacks": "peptide-stacks",
+  "peptide stacks": "peptides",
   addiction: "addiction",
   anesthetic: "anesthetic",
 };
@@ -39,6 +39,8 @@ export function photoForCategory(category?: string | null) {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+  // Peptides use the lab-vial photography set
+  if (key === "peptides" || key === "peptide stacks") return photos.peptides;
   const slug = CATEGORY_SLUGS[key] || "compounded";
   return `/images/formulary/${slug}.svg`;
 }
