@@ -1,17 +1,17 @@
-/* Spa reference palette (marked photo) + logo brand blue #184868 */
+/* Sandy spa surfaces + logo blue #184868 from brand mark */
 :root {
-  --cream: #efeae2;   /* bowl / linens */
-  --sand: #c9bba8;    /* plaster wall */
-  --stone: #b8b5ae;   /* stone tray */
-  --amber: #7d4e2d;   /* amber glass bottles */
-  --navy: #1b2a45;    /* bed base / ceramic vase */
-  --brand: #184868;   /* logo stroke + wordmark */
-  --brand-dark: #12253d;
-  --brand-mid: #243552;
+  --cream: #efeae2;
+  --sand: #c9bba8;
+  --stone: #b8b5ae;
+  --amber: #7d4e2d;
+  --brand: #184868;       /* logo hex / wordmark blue */
+  --navy: #143a54;        /* deeper logo blue for dark bands */
+  --brand-dark: #0f2d42;
+  --brand-mid: #245a78;
   --brand-soft: #e8e2d8;
-  --brand-line: #3a4d6a;
+  --brand-line: #2f5f7c;
   --accent: var(--brand);
-  --ink: #1a2438;
+  --ink: #152a38;
   --muted: #6e675c;
   --line: #d4cfc6;
   --paper: var(--cream);
@@ -54,7 +54,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .photo, .banner-photo, .card-photo, .dash-photo { object-fit: cover; }
 .photo { width: min(460px, 100%); height: 560px; border-radius: 28px; flex: 1; }
 .logo { height: 90px; width: auto; display: block; }
-.logo-footer { height: 64px; }
+.logo-footer { height: 72px; }
 .page-banner { padding: 56px 0 12px; }
 .page-banner-grid, .dash-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 36px; align-items: center; }
 .banner-photo, .dash-photo { width: 100%; height: 280px; border-radius: 28px; }
@@ -111,7 +111,7 @@ textarea { min-height: 90px; }
 .portal { display: grid; grid-template-columns: 268px 1fr; min-height: 100vh; background: var(--paper); }
 .side { background: var(--navy); color: white; padding: 22px 16px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; }
 .side a { color: #e4ddd2; text-decoration: none; padding: 10px 12px; border-radius: 12px; font-weight: 600; }
-.side .logo { height: 48px; margin-bottom: 10px; }
+.side .logo { height: 56px; margin-bottom: 10px; }
 .side a.active, .side a:hover { background: var(--brand-mid); color: white; }
 .main { padding: 28px; }
 .table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 16px; overflow: hidden; }
@@ -173,7 +173,7 @@ textarea { min-height: 90px; }
   .portal { display: block; }
   .side { position: sticky; top: 0; height: auto; z-index: 20; padding: 12px; gap: 10px; }
   .side-top { flex-direction: row; align-items: center; gap: 10px; }
-  .side .logo { height: 40px; margin: 0; }
+  .side .logo { height: 48px; margin: 0; }
   .side-meta { margin: 0; flex: 1; min-width: 0; }
   .side-meta span:last-child { display: none; }
   .side-out { display: none; }
