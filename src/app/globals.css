@@ -1,22 +1,22 @@
-/* Palette locked to Wellness Tech logo: brand #184868 + ink #111111 */
+/* Spa reference palette (marked photo) + logo brand blue #184868 */
 :root {
-  --brand: #184868;
-  --brand-dark: #123a54;
-  --brand-mid: #215a7a;
-  --brand-soft: #e6eef3;
-  --brand-line: #2f6f90;
-  --navy: var(--brand);
+  --cream: #efeae2;   /* bowl / linens */
+  --sand: #c9bba8;    /* plaster wall */
+  --stone: #b8b5ae;   /* stone tray */
+  --amber: #7d4e2d;   /* amber glass bottles */
+  --navy: #1b2a45;    /* bed base / ceramic vase */
+  --brand: #184868;   /* logo stroke + wordmark */
+  --brand-dark: #12253d;
+  --brand-mid: #243552;
+  --brand-soft: #e8e2d8;
+  --brand-line: #3a4d6a;
   --accent: var(--brand);
-  --ink: #111111;
-  --muted: #4a5a66;
-  --line: #d0d8e0;
-  --paper: #f5f8fa;
-  --surface: #eef3f6;
-  --card: #ffffff;
-  --cream: var(--paper);
-  --sand: #c5d0d8;
-  --stone: #a8b4be;
-  --amber: var(--brand);
+  --ink: #1a2438;
+  --muted: #6e675c;
+  --line: #d4cfc6;
+  --paper: var(--cream);
+  --surface: #f7f4ef;
+  --card: #fffcf8;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -32,21 +32,21 @@ img { max-width: 100%; display: block; }
 .links { display: flex; gap: 22px; flex-wrap: nowrap; align-items: center; }
 .links a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: 15px; }
 .links a.btn, .nav-cta { color: #fff; background: var(--accent); }
-.links a.nav-cta:hover { background: var(--brand-dark); color: #fff; }
+.links a.nav-cta:hover { background: var(--amber); color: #fff; }
 .btn { display: inline-flex; align-items: center; justify-content: center; width: fit-content; border-radius: 999px; padding: 12px 20px; font-weight: 700; text-decoration: none; border: 0; cursor: pointer; font: inherit; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 .form .btn { width: 100%; }
-.btn-dark { background: var(--brand-dark); color: white; }
+.btn-dark { background: var(--navy); color: white; }
 .btn-accent { background: var(--accent); color: white; }
-.btn-accent:hover { background: var(--brand-dark); }
+.btn-accent:hover { background: var(--amber); }
 .btn-ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
 .hero { padding: 72px 0; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .hero-copy { max-width: 640px; flex: 1 1 420px; }
 .hero h1, .section h2, .panel h2 { letter-spacing: -.03em; line-height: 1.08; margin: 0; }
 .hero h1 { font-size: clamp(2.4rem, 4.4vw, 3.8rem); max-width: 640px; }
 .lede { color: var(--muted); font-size: 19px; max-width: 520px; }
-.kicker { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); }
-.pill { display: inline-flex; gap: 8px; align-items: center; background: var(--brand-soft); color: var(--brand); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; }
+.kicker { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--amber); }
+.pill { display: inline-flex; gap: 8px; align-items: center; background: #e8dfd2; color: var(--navy); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; }
 .stats { padding-top: 20px; border-top: 1px solid var(--line); max-width: 560px; }
 .stats div { flex: 1; }
 .stats strong { display: block; font-size: 24px; }
@@ -116,7 +116,7 @@ textarea { min-height: 90px; }
 .main { padding: 28px; }
 .table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 16px; overflow: hidden; }
 .table th, .table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
-.note { background: var(--brand-soft); border-radius: 16px; padding: 14px 16px; color: var(--brand-dark); }
+.note { background: #e8dfd2; border-radius: 16px; padding: 14px 16px; color: var(--ink); }
 .error { color: #8d2b2b; font-weight: 600; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .timeline { display: flex; gap: 8px; flex-wrap: wrap; }
