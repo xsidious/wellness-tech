@@ -1,9 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 180" role="img" aria-label="Wellness Tech Distribution">
-  <title>Wellness Tech Distribution</title>
-  <path d="M86 22 L134 50 L134 106 L86 134 L38 106 L38 50 Z" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="miter" />
-  <circle cx="16" cy="78" r="5.5" fill="#ffffff"/>
-  <path d="M16 78 H36 L52 78 L62 50 L72 110 L82 58 L92 98 L102 78 H330" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-  <text x="150" y="72" fill="#ffffff" font-family="Georgia, 'Times New Roman', serif" font-size="44" font-weight="700">Wellness</text>
-  <text x="348" y="72" fill="#ffffff" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="600">Tech</text>
-  <text x="150" y="118" fill="#ffffff" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="500" letter-spacing="7.5">DISTRIBUTION</text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 122.42">
+  <defs>
+    <style>
+      .cls-1 {
+        stroke-width: 9px;
+      }
+
+      .cls-1, .cls-2 {
+        fill: none;
+        stroke: #ffffff;
+      }
+
+      .cls-3 {
+        fill: #ffffff;
+        font-family: SegoeUI, 'Segoe UI';
+        font-size: 24.93px;
+        letter-spacing: .4em;
+      }
+
+      .cls-3, .cls-4, .cls-5 {
+        isolation: isolate;
+      }
+
+      .cls-4 {
+        font-family: Georgia-Bold, Georgia;
+        font-weight: 700;
+      }
+
+      .cls-4, .cls-6, .cls-5 {
+        fill: #ffffff;
+      }
+
+      .cls-4, .cls-5 {
+        font-size: 44px;
+      }
+
+      .cls-7 {
+        letter-spacing: -.1em;
+      }
+
+      .cls-2 {
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 5px;
+      }
+
+      .cls-5 {
+        font-family: SegoeUI-Semibold, 'Segoe UI';
+        font-weight: 600;
+      }
+    </style>
+  </defs>
+  <g id="Layer_1-2" data-name="Layer 1">
+    <path class="cls-1" d="m75.5,5.21l48,28v56l-48,28-48-28v-56L75.5,5.21Z"/>
+    <circle class="cls-6" cx="5.5" cy="61.21" r="5.5"/>
+    <path class="cls-2" d="m5.5,61.21h36l10-28,10,60,10-52,10,40,10-20h338"/>
+    <text class="cls-4" transform="translate(139.5 53.21)"><tspan x="0" y="0">Wellness</tspan></text>
+    <text class="cls-5" transform="translate(337.5 53.21)"><tspan class="cls-7" x="0" y="0">T</tspan><tspan x="20" y="0">ech</tspan></text>
+    <text class="cls-3" transform="translate(144.83 89.36)"><tspan x="0" y="0">DISTRIBUTION</tspan></text>
+  </g>
 </svg>
