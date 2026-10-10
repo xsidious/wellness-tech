@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://www.thewellnesstech.com").replace(/\/$/, "");
+const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.thewellnesstech.com").replace(/\/$/, "");
 
 const routes: Array<{ path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[0]["changeFrequency"] }> = [
   { path: "/", priority: 1, changeFrequency: "weekly" },

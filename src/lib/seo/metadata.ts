@@ -13,7 +13,7 @@ const siteName = "Wellness Tech Distribution";
 const defaultTitle = "503A & 503B Therapies for Licensed Practices";
 const defaultDescription =
   "Compounded peptides, GLP-1s, exosomes, and clinical supplies for licensed practices — one account, one cart, RxHere fulfillment.";
-const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.thewellnesstech.com";
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.thewellnesstech.com";
 const defaultImage = "/images/hero-clinic.jpg";
 
 export function getAppUrl() {
@@ -42,7 +42,7 @@ export function buildSeoMetadata(input: SeoInput = {}): Metadata {
   return {
     title: { absolute: title },
     description,
-    metadataBase: new URL(getAppUrl()),
+    metadataBase: (() => { try { return new URL(getAppUrl()); } catch { return new URL("https://www.thewellnesstech.com"); } })(),
     alternates: { canonical: canonicalPath },
     robots: {
       index: !noIndex,
