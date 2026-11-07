@@ -499,6 +499,14 @@ export async function placeOrder(formData: FormData) {
   if (needsEscript && !signatureDataUrl.startsWith("data:image")) {
     return { error: "503A/503B lines require a signed eScript before the order can go to pharmacy." };
   }
+  if (needsEscript) {
+    const { assertCanSignEscript } = await import("@/lib/escript");
+    const gate = assertCanSignEscript(user);
+    if (!gate.ok) return { error: gate.error };
+    if (formData.get("attestationAccepted") !== "1" && formData.get("attestationAccepted") !== "on") {
+      return { error: "Confirm the prescribing attestation before signing." };
+    }
+  }
 
   const split = fulfillmentGroups(classes);
   const shipping = shippingCents(products.map((product) => product.storage));
@@ -549,18 +557,44 @@ export async function placeOrder(formData: FormData) {
   });
 
   if (needsEscript) {
+    const {
+      buildLinesSnapshot,
+      buildPatientSnapshot,
+      buildSignedEscriptPayload,
+    } = await import("@/lib/escript");
+    const { requestClientMeta } = await import("@/lib/auth-security");
+    const meta = await requestClientMeta();
+    const patientRow = clinicalPatientId
+      ? await prisma.clinicalPatient.findUnique({ where: { id: clinicalPatientId } })
+      : null;
+    const signed = buildSignedEscriptPayload({
+      user,
+      orderId: order.id,
+      invoiceNumber: order.invoiceNumber,
+      clinicalPatientId,
+      patient: buildPatientSnapshot(patientRow),
+      lines: buildLinesSnapshot(order.lines),
+      signatureDataUrl,
+      directions: String(formData.get("directions") || "As directed by prescribing clinician."),
+      attestationAccepted: true,
+      ip: meta.ip,
+      ua: meta.ua,
+      licenseState: String(formData.get("licenseState") || ""),
+    });
+    if (!signed.ok) return { error: signed.error };
     await prisma.eScript.create({
       data: {
         orderId: order.id,
+        ...signed.data,
         clinicalPatientId: clinicalPatientId || undefined,
-        status: signatureDataUrl ? "signed" : "draft",
-        signatureDataUrl: signatureDataUrl || "",
-        signedById: signatureDataUrl ? user.id : undefined,
-        signedAt: signatureDataUrl ? new Date() : undefined,
-        npi: user.credential?.npi || "",
-        displayName: user.credential?.displayName || user.name,
-        directions: String(formData.get("directions") || "As directed by prescribing clinician."),
       },
+    });
+    await audit({
+      actorId: user.id,
+      action: "escript.signed",
+      object: order.id,
+      after: signed.data.contentHash,
+      ip: meta.ip,
     });
   }
 
@@ -634,12 +668,13 @@ export async function approveRefill(formData: FormData) {
     if (!product) continue;
     sequence += 1;
     const shipping = shippingCents([product.storage]);
+    const needsEscript = requiresEscript(product.productClass, product.rxRequired);
     const order = await prisma.order.create({
       data: {
         orgId: user.orgId,
         placedById: user.id,
         invoiceNumber: `WT-2026-${String(sequence).padStart(4, "0")}`,
-        status: "submitted",
+        status: needsEscript ? "on_hold" : "submitted",
         paymentStatus: refill.autopay ? "authorized" : "unpaid",
         paymentToken: refill.autopay ? "tok_sandbox_autopay" : "",
         cardLast4: refill.autopay ? "4242" : "",
@@ -647,6 +682,7 @@ export async function approveRefill(formData: FormData) {
         subtotalCents: product.priceCents,
         totalCents: product.priceCents + shipping,
         source: "refill",
+        escriptStatus: needsEscript ? "pending_signature" : "not_required",
         lines: {
           create: {
             sku: product.sku,
@@ -657,15 +693,50 @@ export async function approveRefill(formData: FormData) {
             patientInitials: refill.patientInitials,
             prescriber: user.credential?.displayName || user.name,
             daysSupply: refill.daysSupply,
+            strength: product.strength,
+            size: product.size,
+            dosageForm: product.form,
           },
         },
       },
+      include: { lines: true },
     });
-    await prisma.refill.update({ where: { id: refill.id }, data: { status: "approved" } });
-    await openRxcoreOrder({
-      orderId: order.id,
-      lines: [{ productClass: "503A", patientInitials: refill.patientInitials }],
-    });
+    if (needsEscript) {
+      await prisma.eScript.create({
+        data: {
+          orderId: order.id,
+          status: "draft",
+          npi: user.credential?.npi || "",
+          displayName: user.credential?.displayName || user.name,
+          directions: "Continue previous therapy as directed.",
+          linesSnapshotJson: JSON.stringify(
+            order.lines.map((line) => ({
+              sku: line.sku,
+              name: line.name,
+              productClass: line.productClass,
+              qty: line.qty,
+              unitPriceCents: line.unitPriceCents,
+              strength: line.strength,
+              size: line.size,
+              dosageForm: line.dosageForm,
+              sig: line.sig,
+              daysSupply: line.daysSupply,
+              patientInitials: line.patientInitials,
+            })),
+          ),
+        },
+      });
+    }
+    await prisma.refill.update({ where: { id: refill.id }, data: { status: needsEscript ? "awaiting_escript" : "approved" } });
+    if (!needsEscript) {
+      await openRxcoreOrder({
+        orderId: order.id,
+        lines: [{ productClass: "503A", patientInitials: refill.patientInitials }],
+      });
+    } else {
+      // First refill needing a signature — send clinician to the order signing desk.
+      redirect(`/portal/orders/${order.id}?refill=sign`);
+    }
   }
   redirect("/portal/refills");
 }

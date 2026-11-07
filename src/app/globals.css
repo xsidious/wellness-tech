@@ -923,3 +923,99 @@ textarea { min-height: 90px; }
   .ws-head h1 { font-size: 1.7rem; }
   .ws-stat-value { font-size: 1.55rem; }
 }
+
+/* —— eScript signing & document —— */
+.escript-sign { display: flex; flex-direction: column; gap: 18px; }
+.escript-sign-hero h2 { margin: 6px 0 0; font-size: clamp(1.5rem, 2vw, 1.9rem); letter-spacing: -.03em; }
+.escript-sign-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; }
+.escript-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px 18px 16px;
+  box-shadow: 0 10px 28px rgba(20, 42, 56, .04);
+}
+.escript-panel h3 { margin: 0 0 12px; font-size: 1.05rem; letter-spacing: -.02em; }
+.escript-dl { margin: 0; display: grid; gap: 10px; }
+.escript-dl > div { display: grid; gap: 2px; }
+.escript-dl dt { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.escript-dl dd { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.escript-gate {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff4e8;
+  border: 1px solid #e8c49a;
+  color: #7a4a12;
+  font-size: 14px;
+}
+.escript-sign-form { display: flex; flex-direction: column; gap: 14px; }
+.escript-field { display: flex; flex-direction: column; gap: 6px; font-weight: 650; }
+.escript-field textarea, .escript-field input {
+  font: inherit; font-weight: 500; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff;
+}
+.escript-attest {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface);
+}
+.escript-attest.on { border-color: #184868; background: #eef5fa; }
+.escript-attest input { margin-top: 4px; width: 18px; height: 18px; flex-shrink: 0; }
+.escript-attest span { display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.45; }
+.escript-attest em { font-style: normal; color: var(--muted); font-size: 13px; }
+.escript-submit { align-self: flex-start; min-width: 220px; }
+.escript-pad { display: flex; flex-direction: column; gap: 8px; }
+.escript-canvas { background: #f7f9fc; }
+
+.escript-doc {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 28px;
+  box-shadow: 0 16px 40px rgba(20, 42, 56, .05);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.escript-doc-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.escript-doc-head h2 { margin: 4px 0 0; letter-spacing: -.03em; }
+.escript-doc-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.escript-doc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.escript-doc-section h3 { margin: 0 0 12px; font-size: 1.05rem; }
+.escript-directions { margin: 14px 0 0; font-size: 15px; }
+.escript-sig-img {
+  width: min(420px, 100%);
+  max-height: 180px;
+  object-fit: contain;
+  background: #f7f9fc;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+}
+.escript-attest-quote {
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border-left: 3px solid #184868;
+  background: var(--surface);
+  border-radius: 0 14px 14px 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.escript-audit { margin-top: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.escript-hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+
+.escript-print-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+@media (max-width: 900px) {
+  .escript-sign-grid, .escript-doc-grid { grid-template-columns: 1fr; }
+}
+@media print {
+  .side, .ws-head-actions, .escript-doc-actions, .btn, nav, .side-nav { display: none !important; }
+  .portal { display: block; background: #fff; }
+  .main { padding: 0; }
+  .escript-doc { box-shadow: none; border: 0; border-radius: 0; padding: 0; }
+  .escript-print-page { max-width: none; padding: 0; }
+}

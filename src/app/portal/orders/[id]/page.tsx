@@ -1,17 +1,26 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClinicalChartView } from "@/components/ClinicalChartView";
-import { SignaturePad } from "@/components/escript/SignaturePad";
+import { EscriptDocument } from "@/components/escript/EscriptDocument";
+import { EscriptSigningPanel } from "@/components/escript/EscriptSigningPanel";
 import { PageHeader, SectionCard, StatusBadge, statusTone } from "@/components/portal/Workspace";
 import { advanceOrder } from "@/lib/actions";
+import { assertCanSignEscript, buildLinesSnapshot, buildPatientSnapshot } from "@/lib/escript";
 import { requireUser } from "@/lib/guard";
 import { signEscript } from "@/lib/practice-actions";
 import { prisma } from "@/lib/prisma";
 
 const STEPS = ["received", "verified", "compounding", "shipped", "delivered", "submitted", "on_hold"];
 
-export default async function OrderDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrderDetail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; refill?: string }>;
+}) {
   const user = await requireUser();
+  const q = await searchParams;
   const order = await prisma.order.findFirst({
     where: { id: (await params).id, orgId: user.orgId },
     include: {
@@ -19,13 +28,16 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
       events: { orderBy: { createdAt: "asc" } },
       clinicalPatient: true,
       pharmacy: true,
-      escripts: { orderBy: { createdAt: "desc" }, take: 3 },
+      escripts: { orderBy: { createdAt: "desc" }, take: 5 },
     },
   });
   if (!order) notFound();
 
   const timelineStatus = order.status === "submitted" ? "received" : order.status;
-  const pendingEscript = order.escriptStatus === "pending_signature" || order.escripts.some((e) => e.status !== "signed");
+  const signed = order.escripts.find((e) => e.status === "signed");
+  const pendingEscript =
+    order.escriptStatus === "pending_signature" || order.escripts.some((e) => e.status !== "signed");
+  const gate = assertCanSignEscript(user);
 
   return (
     <div className="ws-stack">
@@ -38,6 +50,11 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
             <Link className="btn btn-ghost" href="/portal/orders">
               All orders
             </Link>
+            {signed ? (
+              <Link className="btn btn-accent" href={`/portal/orders/${order.id}/escript`}>
+                View signed Rx
+              </Link>
+            ) : null}
             {order.clinicalPatientId ? (
               <Link className="btn btn-ghost" href={`/portal/patients/${order.clinicalPatientId}`}>
                 Patient chart
@@ -46,6 +63,11 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
           </div>
         }
       />
+
+      {q.error ? <p className="error">{q.error}</p> : null}
+      {q.refill === "sign" ? (
+        <p className="note">Refill approved — sign the eScript below to release this order to pharmacy.</p>
+      ) : null}
 
       <div className="ws-stat-grid">
         <div className="ws-stat">
@@ -82,20 +104,29 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
       </div>
       {order.splitMessage ? <p className="note">{order.splitMessage}</p> : null}
 
-      {pendingEscript ? (
-        <SectionCard title="Sign eScript" description="Pharmacy forward is blocked until a credentialed signature is on file.">
-          <form action={signEscript} className="ws-message-form">
-            <input type="hidden" name="orderId" value={order.id} />
-            <label>
-              Directions
-              <input name="directions" defaultValue="As directed by prescribing clinician." />
-            </label>
-            <SignaturePad />
-            <button className="btn btn-accent" type="submit">
-              Sign and release to pharmacy
-            </button>
-          </form>
+      {pendingEscript && !signed ? (
+        <SectionCard title="Sign eScript" description="Pharmacy forward is blocked until a credentialed signature is on file." flush>
+          <EscriptSigningPanel
+            patient={buildPatientSnapshot(order.clinicalPatient)}
+            lines={buildLinesSnapshot(order.lines)}
+            canSign={gate.ok}
+            gateMessage={gate.ok ? undefined : gate.error}
+            signerLabel={user.credential?.displayName || user.name}
+            npi={user.credential?.npi || ""}
+            formAction={signEscript}
+            hiddenFields={{ orderId: order.id }}
+            submitLabel="Sign and release to pharmacy"
+          />
         </SectionCard>
+      ) : null}
+
+      {signed ? (
+        <EscriptDocument
+          script={{ ...signed, order: { id: order.id, invoiceNumber: order.invoiceNumber } }}
+          printHref={`/portal/orders/${order.id}/escript?print=1`}
+          orderHref={`/portal/orders/${order.id}`}
+          patientHref={order.clinicalPatientId ? `/portal/patients/${order.clinicalPatientId}` : undefined}
+        />
       ) : null}
 
       <ClinicalChartView

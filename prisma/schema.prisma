@@ -387,23 +387,36 @@ model PharmacyLocation {
 }
 
 model EScript {
-  id                 String   @id @default(cuid())
-  orderId            String
-  order              Order    @relation(fields: [orderId], references: [id])
-  clinicalPatientId  String?
-  clinicalPatient    ClinicalPatient? @relation(fields: [clinicalPatientId], references: [id], onDelete: SetNull)
-  signedById         String?
-  signedBy           User?    @relation("EScriptSigner", fields: [signedById], references: [id], onDelete: SetNull)
-  status             String   @default("draft")
-  npi                String   @default("")
-  displayName        String   @default("")
-  signatureDataUrl   String   @default("")
-  directions         String   @default("")
-  signedAt           DateTime?
-  createdAt          DateTime @default(now())
+  id                  String   @id @default(cuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id])
+  clinicalPatientId   String?
+  clinicalPatient     ClinicalPatient? @relation(fields: [clinicalPatientId], references: [id], onDelete: SetNull)
+  signedById          String?
+  signedBy            User?    @relation("EScriptSigner", fields: [signedById], references: [id], onDelete: SetNull)
+  status              String   @default("draft")
+  npi                 String   @default("")
+  displayName         String   @default("")
+  signerEmail         String   @default("")
+  licenseState        String   @default("")
+  licenseNumber       String   @default("")
+  deaNumber           String   @default("")
+  signatureDataUrl    String   @default("")
+  directions          String   @default("")
+  attestationText     String   @default("")
+  attestationVersion  String   @default("")
+  signedIp            String   @default("")
+  signedUserAgent     String   @default("")
+  patientSnapshotJson String   @default("{}")
+  linesSnapshotJson   String   @default("[]")
+  contentHash         String   @default("")
+  version             Int      @default(1)
+  signedAt            DateTime?
+  createdAt           DateTime @default(now())
 
   @@index([orderId])
   @@index([status])
+  @@index([contentHash])
 }
 
 model Settlement {

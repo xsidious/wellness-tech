@@ -111,8 +111,11 @@ export default async function AdminPrescriptionsPage({
                 {escripts.map((row) => (
                   <tr key={row.id}>
                     <td>
-                      <b>{row.displayName || row.signedBy?.name || "—"}</b>
+                      <Link href={`/admin/prescriptions/${row.id}`}>
+                        <b>{row.displayName || row.signedBy?.name || "—"}</b>
+                      </Link>
                       <div className="muted">{row.npi ? `NPI ${row.npi}` : row.signedBy?.email || "—"}</div>
+                      {row.contentHash ? <div className="muted">hash {row.contentHash.slice(0, 12)}…</div> : null}
                     </td>
                     <td>
                       {row.clinicalPatient ? (
@@ -125,6 +128,10 @@ export default async function AdminPrescriptionsPage({
                     </td>
                     <td>
                       <Link href={`/admin/orders/${row.orderId}`}>{row.order.invoiceNumber}</Link>
+                      {" · "}
+                      <Link className="ws-text-link" href={`/admin/prescriptions/${row.id}`}>
+                        Open Rx
+                      </Link>
                     </td>
                     <td>
                       <Link href={`/admin/practices/${row.order.orgId}`}>{row.order.org.legalName}</Link>

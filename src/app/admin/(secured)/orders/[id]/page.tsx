@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClinicalChartView } from "@/components/ClinicalChartView";
+import { EscriptDocument } from "@/components/escript/EscriptDocument";
 import {
   PageHeader,
   SectionCard,
@@ -133,39 +134,21 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
         </div>
       </SectionCard>
 
-      <SectionCard title="eScripts on this order">
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Prescriber</th>
-                <th>NPI</th>
-                <th>Status</th>
-                <th>Signed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.escripts.map((e) => (
-                <tr key={e.id}>
-                  <td>{e.displayName || e.signedBy?.name || "—"}</td>
-                  <td className="muted">{e.npi || "—"}</td>
-                  <td>
-                    <StatusBadge tone={statusTone(e.status)}>{e.status}</StatusBadge>
-                  </td>
-                  <td className="muted">{e.signedAt ? e.signedAt.toLocaleString() : "—"}</td>
-                </tr>
-              ))}
-              {!order.escripts.length ? (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    No eScript records (status: {order.escriptStatus || "n/a"}).
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      {order.escripts.filter((e) => e.status === "signed").map((e) => (
+        <EscriptDocument
+          key={e.id}
+          script={{ ...e, order: { id: order.id, invoiceNumber: order.invoiceNumber }, clinicalPatient: order.clinicalPatient }}
+          printHref={`/admin/prescriptions/${e.id}?print=1`}
+          orderHref={`/admin/orders/${order.id}`}
+          patientHref={order.clinicalPatientId ? `/admin/patients/${order.clinicalPatientId}` : undefined}
+        />
+      ))}
+
+      {!order.escripts.some((e) => e.status === "signed") ? (
+        <SectionCard title="eScripts on this order">
+          <p className="muted">No signed eScript yet (status: {order.escriptStatus || "n/a"}).</p>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Fulfillment events">
         <ul className="ws-steps">

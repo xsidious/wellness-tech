@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requestClientMeta } from "@/lib/auth-security";
 import { audit } from "@/lib/audit";
+import {
+  assertCanSignEscript,
+  buildLinesSnapshot,
+  buildPatientSnapshot,
+  buildSignedEscriptPayload,
+} from "@/lib/escript";
 import { notifyKianStatus } from "@/lib/eventide";
 import { requireUser, rolesOf } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
@@ -157,43 +164,64 @@ export async function signEscript(formData: FormData) {
   const user = await requireUser();
   const orderId = String(formData.get("orderId") || "");
   const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
-  if (!signatureDataUrl.startsWith("data:image")) {
-    redirect(`/portal/orders/${orderId}?error=signature`);
-  }
+  const meta = await requestClientMeta();
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, orgId: user.orgId },
-    include: { lines: true, escripts: true },
+    include: { lines: true, escripts: true, clinicalPatient: true },
   });
   if (!order) redirect("/portal/orders");
 
-  const needs = order.lines.some((l) => requiresEscript(l.productClass, true) || l.productClass === "503A" || l.productClass === "503B");
+  const needs = order.lines.some(
+    (l) => requiresEscript(l.productClass, true) || l.productClass === "503A" || l.productClass === "503B",
+  );
   if (!needs) redirect(`/portal/orders/${order.id}`);
 
-  const draft = order.escripts.find((e) => e.status !== "signed") || order.escripts[0];
-  const data = {
-    status: "signed",
-    signatureDataUrl,
-    signedById: user.id,
-    signedAt: new Date(),
-    npi: user.credential?.npi || "",
-    displayName: user.credential?.displayName || user.name,
-    directions: String(formData.get("directions") || "As directed"),
-    clinicalPatientId: order.clinicalPatientId,
-  };
+  const alreadySigned = order.escripts.some((e) => e.status === "signed" && e.contentHash);
+  if (alreadySigned && order.escriptStatus === "signed") {
+    redirect(`/portal/orders/${order.id}/escript`);
+  }
 
+  const signed = buildSignedEscriptPayload({
+    user,
+    orderId: order.id,
+    invoiceNumber: order.invoiceNumber,
+    clinicalPatientId: order.clinicalPatientId,
+    patient: buildPatientSnapshot(order.clinicalPatient),
+    lines: buildLinesSnapshot(order.lines),
+    signatureDataUrl,
+    directions: String(formData.get("directions") || "As directed by prescribing clinician."),
+    attestationAccepted: formData.get("attestationAccepted") === "1" || formData.get("attestationAccepted") === "on",
+    ip: meta.ip,
+    ua: meta.ua,
+    licenseState: String(formData.get("licenseState") || ""),
+  });
+  if (!signed.ok) {
+    redirect(`/portal/orders/${order.id}?error=${encodeURIComponent(signed.error)}`);
+  }
+
+  const draft = order.escripts.find((e) => e.status !== "signed");
   if (draft) {
-    await prisma.eScript.update({ where: { id: draft.id }, data });
+    await prisma.eScript.update({ where: { id: draft.id }, data: signed.data });
   } else {
-    await prisma.eScript.create({ data: { orderId: order.id, ...data } });
+    await prisma.eScript.create({ data: { orderId: order.id, ...signed.data } });
   }
 
   await prisma.order.update({
     where: { id: order.id },
-    data: { escriptStatus: "signed" },
+    data: {
+      escriptStatus: "signed",
+      status: order.status === "on_hold" ? "submitted" : order.status,
+      prescriberJson: JSON.stringify({
+        displayName: signed.data.displayName,
+        npi: signed.data.npi,
+        email: signed.data.signerEmail,
+        licenseState: signed.data.licenseState,
+        licenseNumber: signed.data.licenseNumber,
+      }),
+    },
   });
 
-  // Forward to pharmacy once signed
   const eventide = await prisma.pharmacy.findFirst({
     where: { name: { contains: "Eventide", mode: "insensitive" } },
   });
@@ -211,9 +239,16 @@ export async function signEscript(formData: FormData) {
       })),
   });
 
-  await audit({ actorId: user.id, action: "escript.signed", object: order.id });
+  await audit({
+    actorId: user.id,
+    action: "escript.signed",
+    object: order.id,
+    after: signed.data.contentHash,
+    ip: meta.ip,
+  });
   revalidatePath(`/portal/orders/${order.id}`);
-  redirect(`/portal/orders/${order.id}`);
+  revalidatePath("/admin/prescriptions");
+  redirect(`/portal/orders/${order.id}/escript`);
 }
 
 export async function requestPatientRefill(formData: FormData) {
@@ -259,3 +294,6 @@ export async function pushTrackingToKian(orderId: string, status: string, tracki
     occurredAt: new Date().toISOString(),
   });
 }
+
+// Keep assert available for page gates
+export { assertCanSignEscript };
