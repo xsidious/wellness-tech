@@ -51,17 +51,20 @@ const adminGroups: PortalNavGroup[] = [
     links: [
       { href: "/admin", label: "Dashboard", exact: true },
       { href: "/admin/orders", label: "Orders" },
+      { href: "/admin/prescriptions", label: "Prescriptions" },
       { href: "/admin/practices", label: "Practices" },
       { href: "/admin/pharmacies", label: "Pharmacies" },
+      { href: "/pharmacy", label: "Pharmacy queue" },
     ],
   },
   {
-    label: "Network",
+    label: "Clinical network",
     links: [
       { href: "/admin/patients", label: "Patients" },
       { href: "/admin/prescribers", label: "Prescribers" },
       { href: "/admin/affiliates", label: "Affiliates" },
       { href: "/admin/products", label: "Catalog" },
+      { href: "/admin/refills", label: "Refills" },
     ],
   },
   {
@@ -69,7 +72,6 @@ const adminGroups: PortalNavGroup[] = [
     links: [
       { href: "/admin/settlements", label: "Settlements" },
       { href: "/admin/reports", label: "Reports" },
-      { href: "/admin/refills", label: "Refills" },
     ],
   },
   {

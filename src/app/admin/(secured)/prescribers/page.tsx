@@ -1,34 +1,95 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import {
+  EmptyState,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+  statusTone,
+} from "@/components/portal/Workspace";
 import { rolesOf } from "@/lib/guard";
+import { prisma } from "@/lib/prisma";
 
 export default async function AdminPrescribersPage() {
+  const owners = await prisma.user.findMany({
+    where: {
+      OR: [{ roles: { contains: "prescriber" } }, { roles: { contains: "owner" } }, { credential: { isNot: null } }],
+    },
+    include: {
+      org: true,
+      credential: true,
+      _count: { select: { orders: true, escriptsSigned: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 300,
+  });
+
   const credentials = await prisma.prescriberCredential.findMany({
     orderBy: { checkedAt: "desc" },
     include: { user: { include: { org: true } } },
   });
 
-  const owners = await prisma.user.findMany({
-    where: {
-      OR: [{ roles: { contains: "prescriber" } }, { roles: { contains: "owner" } }],
-    },
-    include: { org: true, credential: true },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-
   return (
-    <>
-      <div className="dash-head">
-        <div>
-          <p className="kicker">Credentials</p>
-          <h1>Prescribers</h1>
-          <p className="lede">NPIs and clinicians who can place or authorize compound orders.</p>
-        </div>
-      </div>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Clinical network"
+        title="Prescribers"
+        lede="Clinicians across the network — open a profile to see which patients they brought and every prescription attributed to them."
+      />
 
-      <section className="panel">
-        <h2>Credentialed NPIs</h2>
+      <SectionCard title={`${owners.length} clinicians`} description="Accounts with owner/prescriber roles or an NPI credential." flush>
+        {owners.length ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Prescriber</th>
+                  <th>NPI / specialty</th>
+                  <th>Practice</th>
+                  <th>Roles</th>
+                  <th>Orders placed</th>
+                  <th>eScripts signed</th>
+                  <th>OIG</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {owners.map((user) => (
+                  <tr key={user.id}>
+                    <td>
+                      <b>{user.credential?.displayName || user.name}</b>
+                      <div className="muted">{user.email}</div>
+                    </td>
+                    <td>
+                      {user.credential?.npi ? <div>NPI {user.credential.npi}</div> : <span className="muted">No NPI</span>}
+                      <div className="muted">{user.credential?.specialty || "—"}</div>
+                    </td>
+                    <td>
+                      <Link href={`/admin/practices/${user.orgId}`}>{user.org.legalName}</Link>
+                    </td>
+                    <td className="muted">{rolesOf(user.roles).join(", ")}</td>
+                    <td>{user._count.orders}</td>
+                    <td>{user._count.escriptsSigned}</td>
+                    <td>
+                      <StatusBadge tone={statusTone(user.credential?.oigStatus || "pending")}>
+                        {user.credential?.oigStatus || "pending"}
+                      </StatusBadge>
+                    </td>
+                    <td>
+                      <Link className="ws-text-link" href={`/admin/prescribers/${user.id}`}>
+                        Patients & Rx
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No clinicians yet" body="Prescriber accounts appear when practices onboard NPIs." />
+        )}
+      </SectionCard>
+
+      <SectionCard title="Credential registry" description="NPI verification snapshots on file.">
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -44,55 +105,33 @@ export default async function AdminPrescribersPage() {
             <tbody>
               {credentials.map((row) => (
                 <tr key={row.id}>
-                  <td>{row.displayName}</td>
+                  <td>
+                    <Link href={`/admin/prescribers/${row.userId}`}>
+                      <b>{row.displayName}</b>
+                    </Link>
+                  </td>
                   <td>{row.npi}</td>
                   <td>{row.specialty || "—"}</td>
-                  <td>{row.oigStatus}</td>
+                  <td>
+                    <StatusBadge tone={statusTone(row.oigStatus)}>{row.oigStatus}</StatusBadge>
+                  </td>
                   <td>
                     <Link href={`/admin/practices/${row.user.orgId}`}>{row.user.org.legalName}</Link>
                   </td>
-                  <td>{row.user.email}</td>
+                  <td className="muted">{row.user.email}</td>
                 </tr>
               ))}
               {!credentials.length ? (
                 <tr>
-                  <td colSpan={6}>No NPI credentials on file yet.</td>
+                  <td colSpan={6} className="muted">
+                    No NPI credentials on file yet.
+                  </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="panel">
-        <h2>Owner / prescriber accounts</h2>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Roles</th>
-                <th>Practice</th>
-                <th>NPI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {owners.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                  <td>{rolesOf(user.roles).join(", ")}</td>
-                  <td>
-                    <Link href={`/admin/practices/${user.orgId}`}>{user.org.legalName}</Link>
-                  </td>
-                  <td>{user.credential?.npi || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>
+      </SectionCard>
+    </div>
   );
 }

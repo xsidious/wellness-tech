@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EmptyState, PageHeader, SectionCard } from "@/components/portal/Workspace";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminMessagesPage() {
@@ -9,43 +10,42 @@ export default async function AdminMessagesPage() {
   });
 
   return (
-    <>
-      <div className="dash-head">
-        <div>
-          <p className="kicker">Support</p>
-          <h1>Messages</h1>
-          <p className="lede">Practice ↔ assigned rep threads across the network.</p>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Practice</th>
-              <th>From</th>
-              <th>Message</th>
-            </tr>
-          </thead>
-          <tbody>
-            {messages.map((row) => (
-              <tr key={row.id}>
-                <td>{row.createdAt.toLocaleString()}</td>
-                <td>
-                  <Link href={`/admin/practices/${row.orgId}`}>{row.org.legalName}</Link>
-                </td>
-                <td>{row.authorName}</td>
-                <td>{row.body}</td>
-              </tr>
-            ))}
-            {!messages.length ? (
-              <tr>
-                <td colSpan={4}>No messages yet.</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Support"
+        title="Messages"
+        lede="Practice ↔ assigned rep threads across the network."
+      />
+      <SectionCard title={`${messages.length} recent`} flush>
+        {messages.length ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Practice</th>
+                  <th>From</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {messages.map((row) => (
+                  <tr key={row.id}>
+                    <td className="muted">{row.createdAt.toLocaleString()}</td>
+                    <td>
+                      <Link href={`/admin/practices/${row.orgId}`}>{row.org.legalName}</Link>
+                    </td>
+                    <td>{row.authorName}</td>
+                    <td>{row.body}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No messages" body="Practice support threads will appear here." />
+        )}
+      </SectionCard>
+    </div>
   );
 }

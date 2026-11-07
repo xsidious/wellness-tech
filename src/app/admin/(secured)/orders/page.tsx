@@ -6,6 +6,7 @@ import {
   StatusBadge,
   statusTone,
 } from "@/components/portal/Workspace";
+import { formatPrescriberLabel, resolveOrderPrescriber } from "@/lib/admin-clinical";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
@@ -39,8 +40,9 @@ export default async function AdminOrdersPage({
       org: true,
       clinicalPatient: true,
       pharmacy: true,
-      lines: { select: { id: true } },
-      escripts: { select: { status: true }, take: 1, orderBy: { createdAt: "desc" } },
+      placedBy: true,
+      lines: true,
+      escripts: { include: { signedBy: true }, take: 1, orderBy: { createdAt: "desc" } },
     },
   });
 
@@ -76,12 +78,13 @@ export default async function AdminOrdersPage({
               <thead>
                 <tr>
                   <th>Invoice</th>
+                  <th>Patient</th>
+                  <th>Prescriber</th>
                   <th>Practice</th>
                   <th>Ship to</th>
                   <th>Payment</th>
                   <th>eScript</th>
                   <th>Pharmacy</th>
-                  <th>Tracking</th>
                   <th>Status</th>
                   <th>Total</th>
                 </tr>
@@ -89,6 +92,7 @@ export default async function AdminOrdersPage({
               <tbody>
                 {orders.map((order) => {
                   const escript = order.escripts[0]?.status || order.escriptStatus;
+                  const rx = resolveOrderPrescriber(order);
                   return (
                     <tr key={order.id}>
                       <td>
@@ -99,12 +103,20 @@ export default async function AdminOrdersPage({
                         <div className="muted">{order.lines.length} lines</div>
                       </td>
                       <td>
-                        <Link href={`/admin/practices/${order.orgId}`}>{order.org.legalName}</Link>
                         {order.clinicalPatient ? (
-                          <div className="muted">
-                            <Link href={`/admin/patients/${order.clinicalPatient.id}`}>{order.clinicalPatient.fullName}</Link>
-                          </div>
-                        ) : null}
+                          <Link href={`/admin/patients/${order.clinicalPatient.id}`}>
+                            <b>{order.clinicalPatient.fullName}</b>
+                          </Link>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <b>{formatPrescriberLabel(rx)}</b>
+                        <div className="muted">{rx.source === "none" ? "" : rx.source.replace("_", " ")}</div>
+                      </td>
+                      <td>
+                        <Link href={`/admin/practices/${order.orgId}`}>{order.org.legalName}</Link>
                       </td>
                       <td>{order.shipDestination || "PRACTICE"}</td>
                       <td>
@@ -113,8 +125,10 @@ export default async function AdminOrdersPage({
                       <td>
                         <StatusBadge tone={statusTone(escript)}>{escript}</StatusBadge>
                       </td>
-                      <td>{order.pharmacy?.name || order.rxhereOrderId || "—"}</td>
-                      <td className="muted">{order.trackingNumber || "—"}</td>
+                      <td>
+                        {order.pharmacy?.name || order.rxhereOrderId || "—"}
+                        {order.trackingNumber ? <div className="muted">{order.trackingNumber}</div> : null}
+                      </td>
                       <td>
                         <StatusBadge tone={statusTone(order.status)}>{order.status}</StatusBadge>
                       </td>

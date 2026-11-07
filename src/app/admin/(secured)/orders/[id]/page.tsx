@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClinicalChartView } from "@/components/ClinicalChartView";
+import {
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+  statusTone,
+} from "@/components/portal/Workspace";
 import { adminAdvanceOrder } from "@/lib/actions";
+import { formatPrescriberLabel, resolveOrderPrescriber } from "@/lib/admin-clinical";
+import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminOrderDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -13,30 +21,60 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
       clinicalPatient: true,
       org: true,
       placedBy: true,
+      pharmacy: true,
+      escripts: { include: { signedBy: true }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!order) notFound();
+  const rx = resolveOrderPrescriber(order);
 
   return (
-    <>
-      <div className="dash-head">
-        <div>
-          <p className="kicker">Admin · Order</p>
-          <p className="muted">
-            <Link href="/admin/orders">← All orders</Link>
-            {" · "}
-            <Link href={`/admin/practices/${order.orgId}`}>{order.org.legalName}</Link>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Order"
+        title={order.invoiceNumber}
+        lede={`Placed by ${order.placedBy.name} · ${order.source} · ${order.createdAt.toLocaleString()}`}
+        actions={
+          <div className="ws-head-actions">
+            <Link className="btn btn-ghost" href="/admin/orders">
+              ← Orders
+            </Link>
+            <Link className="btn btn-ghost" href={`/admin/practices/${order.orgId}`}>
+              {order.org.legalName}
+            </Link>
             {order.clinicalPatientId ? (
-              <>
-                {" · "}
-                <Link href={`/admin/patients/${order.clinicalPatientId}`}>Patient chart</Link>
-              </>
+              <Link className="btn btn-accent" href={`/admin/patients/${order.clinicalPatientId}`}>
+                Patient chart
+              </Link>
             ) : null}
-          </p>
-          <h1>{order.invoiceNumber}</h1>
-          <p className="muted">
-            Placed by {order.placedBy.name} · source {order.source} · {order.createdAt.toLocaleString()}
-          </p>
+          </div>
+        }
+      />
+
+      <div className="ws-relation">
+        <div className="ws-relation-step">
+          <span>Prescriber</span>
+          <strong>{formatPrescriberLabel(rx)}</strong>
+          <span className="muted">{rx.source === "none" ? "unattributed" : rx.source.replace("_", " ")}</span>
+        </div>
+        <div className="ws-relation-step">
+          <span>Patient</span>
+          <strong>
+            {order.clinicalPatient ? (
+              <Link href={`/admin/patients/${order.clinicalPatient.id}`}>{order.clinicalPatient.fullName}</Link>
+            ) : (
+              "Office stock / no patient"
+            )}
+          </strong>
+          <span className="muted">{order.clinicalPatient?.email || order.shipDestination}</span>
+        </div>
+        <div className="ws-relation-step">
+          <span>Fulfillment</span>
+          <strong>{order.pharmacy?.name || order.rxhereOrderId || "Unrouted"}</strong>
+          <span className="muted">
+            <StatusBadge tone={statusTone(order.status)}>{order.status}</StatusBadge>{" "}
+            <StatusBadge tone={statusTone(order.paymentStatus)}>{order.paymentStatus}</StatusBadge>
+          </span>
         </div>
       </div>
 
@@ -59,12 +97,81 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
         notes={order.notes}
       />
 
-      <section className="panel">
-        <h2>Fulfillment events</h2>
-        <ul>
+      <SectionCard title="Line items" description={`Invoice total ${money(order.totalCents)}`}>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Prescriber (line)</th>
+                <th>Sig</th>
+                <th>Qty</th>
+                <th>Unit</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.lines.map((line) => (
+                <tr key={line.id}>
+                  <td>
+                    <b>{line.name}</b>
+                    <div className="muted">{[line.strength, line.size, line.dosageForm].filter(Boolean).join(" · ")}</div>
+                  </td>
+                  <td className="muted">{line.sku}</td>
+                  <td>{line.prescriber || "—"}</td>
+                  <td className="muted">{line.sig || "—"}</td>
+                  <td>{line.qty}</td>
+                  <td>{money(line.unitPriceCents)}</td>
+                  <td>
+                    <StatusBadge tone={statusTone(line.lineStatus)}>{line.lineStatus}</StatusBadge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="eScripts on this order">
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Prescriber</th>
+                <th>NPI</th>
+                <th>Status</th>
+                <th>Signed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.escripts.map((e) => (
+                <tr key={e.id}>
+                  <td>{e.displayName || e.signedBy?.name || "—"}</td>
+                  <td className="muted">{e.npi || "—"}</td>
+                  <td>
+                    <StatusBadge tone={statusTone(e.status)}>{e.status}</StatusBadge>
+                  </td>
+                  <td className="muted">{e.signedAt ? e.signedAt.toLocaleString() : "—"}</td>
+                </tr>
+              ))}
+              {!order.escripts.length ? (
+                <tr>
+                  <td colSpan={4} className="muted">
+                    No eScript records (status: {order.escriptStatus || "n/a"}).
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Fulfillment events">
+        <ul className="ws-steps">
           {order.events.map((event) => (
             <li key={event.id}>
-              {event.type} · {event.createdAt.toLocaleString()}
+              <b>{event.type}</b> · {event.createdAt.toLocaleString()}
             </li>
           ))}
           {!order.events.length ? <li className="muted">No events yet.</li> : null}
@@ -77,7 +184,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
             </button>
           </form>
         ) : null}
-      </section>
-    </>
+      </SectionCard>
+    </div>
   );
 }
