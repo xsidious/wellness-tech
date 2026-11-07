@@ -111,16 +111,17 @@ export function ClinicalChartView({
   return (
     <div className="chart-layout">
       <section className="chart-hero panel">
-        <p className="kicker">Clinical chart</p>
+        <p className="kicker">Clinical package</p>
         <h1>{invoiceNumber}</h1>
         <p className="lede">
-          Full KIAN intake, prescription, consents, and shipping mirrored for pharmacy fulfillment.
+          Full intake, prescription, consents, practitioner signatures, and shipping — mirrored for pharmacy fulfillment.
         </p>
         <div className="chart-pills">
           <span className="pill">{paymentStatus}</span>
           {partnerExternalRef ? <span className="pill">KIAN {partnerExternalRef}</span> : null}
-          {rxhereOrderId ? <span className="pill">RxHere {rxhereOrderId}</span> : null}
+          {rxhereOrderId ? <span className="pill">Fulfillment {rxhereOrderId}</span> : null}
           {chart.intake?.status ? <span className="pill">Intake {String(chart.intake.status)}</span> : null}
+          {signatures.length ? <span className="pill">{signatures.length} signature{signatures.length === 1 ? "" : "s"}</span> : null}
         </div>
       </section>
 

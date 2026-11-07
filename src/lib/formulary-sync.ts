@@ -3,6 +3,9 @@ import { resolve } from "path";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { probeFormularyCatalog } from "@/lib/rxhere";
+import { partnerPriceCentsFromFormulary, WT_FORMULARY_MARKUP } from "@/lib/formulary-pricing";
+
+export { partnerPriceCentsFromFormulary, WT_FORMULARY_MARKUP };
 
 export type FormularyRow = {
   sku: string;
@@ -26,20 +29,6 @@ function applyGlpNaming(text: string) {
     .replace(/GLP-2T\s+GLP 2/gi, "GLP-2T")
     .replace(/\s{2,}/g, " ")
     .trim();
-}
-
-/** Partner / portal sell price = RxHere formulary wholesale × this multiplier. */
-export const WT_FORMULARY_MARKUP = 2;
-
-function moneyCents(value: unknown) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.round(n * 100);
-}
-
-/** Wellness Tech catalog price (cents) after margin. */
-export function partnerPriceCentsFromFormulary(wholesale: unknown) {
-  return moneyCents(wholesale) * WT_FORMULARY_MARKUP;
 }
 
 function buildName(row: FormularyRow) {
@@ -86,6 +75,7 @@ export async function loadFormularyRows(): Promise<{ source: "api" | "json"; row
   return { source: "json", rows: loadLocalFormulary() };
 }
 
+/** Upsert formulary into the practice catalog (fulfillment partner stays internal). */
 export async function syncRxHereFormulary(actorId = "") {
   const { source, rows } = await loadFormularyRows();
   if (!rows.length) {
@@ -111,17 +101,15 @@ export async function syncRxHereFormulary(actorId = "") {
       continue;
     }
 
-    const wholesaleCents = moneyCents(row.price);
     const priceCents = partnerPriceCentsFromFormulary(row.price);
     const description = [
       row.description ? applyGlpNaming(row.description) : "",
       form ? `Form: ${form}` : "",
       strength ? `Strength: ${strength}` : "",
       size ? `Size: ${size}` : "",
-      `Vendor SKU: ${sku}`,
-      `RxHere wholesale: $${(wholesaleCents / 100).toFixed(2)}`,
-      `Partner price (${WT_FORMULARY_MARKUP}×): $${(priceCents / 100).toFixed(2)}`,
-      "Source: RxHere 503A compounding pharmacy.",
+      `SKU: ${sku}`,
+      priceCents ? `Practice price: $${(priceCents / 100).toFixed(2)}` : "",
+      "503A compounded · pharmacy fulfillment.",
     ]
       .filter(Boolean)
       .join(" · ");

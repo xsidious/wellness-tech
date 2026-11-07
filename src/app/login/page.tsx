@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { MarketingShell } from "@/components/MarketingShell";
+import { LoginPanel } from "@/components/AuthPanel";
+import { photos } from "@/lib/photos";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Practice Login",
@@ -8,28 +12,34 @@ export const metadata: Metadata = buildSeoMetadata({
   noIndex: true,
 });
 
-import { MarketingShell } from "@/components/MarketingShell";
-import { LoginPanel } from "@/components/AuthPanel";
-import { photos } from "@/lib/photos";
-
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const next = (await searchParams).next || "";
   const nextPath = next.startsWith("/") && !next.startsWith("//") ? next : "";
   return (
-    <MarketingShell>
-      <section className="wrap page-banner">
-        <div className="page-banner-grid">
-          <div className="stack">
-            <span className="kicker">Practice portal</span>
-            <h1>One login for the practice.</h1>
-            <p className="lede">
-              Three steps: email → one-time code → 6-digit PIN. Demo PIN is 246810.
-              Staff catalog admins should use the{" "}
-              <a href="/admin/login">dedicated admin login</a> instead.
-            </p>
-            <LoginPanel nextPath={nextPath} />
+    <MarketingShell variant="auth">
+      <section className="auth-stage">
+        <div className="auth-stage-grid">
+          <div className="auth-panel-col">
+            <div className="auth-panel-inner">
+              <p className="kicker auth-kicker">Practice portal</p>
+              <h1 className="auth-title">Welcome back.</h1>
+              <p className="auth-lede">
+                Sign in to order, track fulfillment, and manage your practice account.
+              </p>
+              <LoginPanel nextPath={nextPath} turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ""} />
+              <p className="auth-aside">
+                New to Wellness Tech? <Link href="/signup">Request practice access</Link>
+              </p>
+            </div>
           </div>
-          <img className="banner-photo" src={photos.consult} alt="A clinician in consultation" />
+          <aside className="auth-visual" aria-hidden="true">
+            <img src={photos.consult} alt="" className="auth-visual-img" />
+            <div className="auth-visual-shade" />
+            <div className="auth-visual-copy">
+              <p className="auth-visual-brand">Wellness Tech Distribution</p>
+              <p className="auth-visual-line">One portal for therapies, supplies, and pharmacy fulfillment.</p>
+            </div>
+          </aside>
         </div>
       </section>
     </MarketingShell>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
@@ -6,11 +6,17 @@ import { organizationJsonLd, professionalServiceJsonLd, websiteJsonLd } from "@/
 
 export const dynamic = "force-dynamic";
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   ...buildSeoMetadata({
     title: "503A and 503B Therapies for Licensed Practices",
     description:
-      "Compounded peptides, GLP-1s, exosomes, and clinical supplies for licensed practices - one account, one cart, RxHere fulfillment.",
+      "Compounded GLP-1s, exosomes, and clinical supplies for licensed practices - one account, one cart, pharmacy fulfillment.",
     canonicalPath: "/",
   }),
   icons: {

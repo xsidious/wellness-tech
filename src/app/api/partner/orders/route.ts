@@ -9,6 +9,7 @@ import type { ClinicalChartPackage } from "@/lib/clinical-chart";
 
 type PartnerLine = {
   sku?: string;
+  platformProductId?: string;
   qty?: number;
   sig?: string;
   name?: string;
@@ -66,7 +67,8 @@ export async function POST(request: Request) {
   const email = String(body.email || "").trim().toLowerCase();
   const lines = (body.lines || [])
     .map((line) => ({
-      sku: String(line.sku || "").trim(),
+      sku: String(line.sku || line.platformProductId || "").trim(),
+      platformProductId: String(line.platformProductId || "").trim(),
       qty: Math.max(1, Number(line.qty) || 1),
       sig: String(line.sig || "").trim(),
       name: String(line.name || "").trim(),
@@ -82,17 +84,59 @@ export async function POST(request: Request) {
 
   const existing = await prisma.order.findFirst({ where: { partnerExternalRef: externalRef } });
   if (existing) {
-    return NextResponse.json({ ok: true, orderId: existing.id, duplicate: true, invoiceNumber: existing.invoiceNumber });
+    // Already created — if pharmacy never accepted, resubmit to Eventide instead of no-oping.
+    if (!existing.rxhereOrderId?.trim()) {
+      const { retryRxHereSubmission } = await import("@/lib/rxcore");
+      const retried = await retryRxHereSubmission(existing.id);
+      if (!retried.ok) {
+        return NextResponse.json(
+          {
+            ok: true,
+            orderId: existing.id,
+            duplicate: true,
+            invoiceNumber: existing.invoiceNumber,
+            warning: retried.error,
+            status: "on_hold",
+          },
+          { status: 200 },
+        );
+      }
+      const refreshed = await prisma.order.findUnique({ where: { id: existing.id } });
+      return NextResponse.json({
+        ok: true,
+        orderId: existing.id,
+        duplicate: true,
+        invoiceNumber: existing.invoiceNumber,
+        rxhereOrderId: retried.orderId,
+        status: refreshed?.status || "submitted",
+      });
+    }
+    return NextResponse.json({
+      ok: true,
+      orderId: existing.id,
+      duplicate: true,
+      invoiceNumber: existing.invoiceNumber,
+      rxhereOrderId: existing.rxhereOrderId,
+      status: existing.status,
+    });
   }
 
+  const skuKeys = [...new Set(lines.flatMap((line) => [line.sku, line.platformProductId].filter(Boolean)))];
   const products = await prisma.product.findMany({
-    where: { sku: { in: lines.map((line) => line.sku) }, active: true },
+    where: {
+      active: true,
+      OR: [{ sku: { in: skuKeys } }, { rxcoreFormularyId: { in: skuKeys } }],
+    },
   });
-  const bySku = new Map(products.map((product) => [product.sku, product]));
-  const missing = lines.filter((line) => !bySku.has(line.sku)).map((line) => line.sku);
+  const bySku = new Map<string, (typeof products)[number]>();
+  for (const product of products) {
+    bySku.set(product.sku, product);
+    if (product.rxcoreFormularyId) bySku.set(product.rxcoreFormularyId, product);
+  }
+  const missing = lines.filter((line) => !bySku.has(line.sku) && !bySku.has(line.platformProductId)).map((line) => line.sku);
   if (missing.length) {
     return NextResponse.json(
-      { ok: false, error: `Unknown SKUs on Wellness Tech: ${missing.join(", ")}. Sync the RxHere formulary first.` },
+      { ok: false, error: `Unknown SKUs on Wellness Tech: ${missing.join(", ")}. Sync the formulary first.` },
       { status: 400 },
     );
   }
@@ -128,8 +172,11 @@ export async function POST(request: Request) {
   const packed = packPatient(patient);
   let subtotal = 0;
   const storages: string[] = [];
-  const lineCreates = lines.map((line) => {
-    const product = bySku.get(line.sku)!;
+  const resolvedLines = lines.map((line) => {
+    const product = bySku.get(line.sku) || bySku.get(line.platformProductId)!;
+    return { line, product };
+  });
+  const lineCreates = resolvedLines.map(({ line, product }) => {
     subtotal += product.priceCents * line.qty;
     storages.push(product.storage);
     return {
@@ -258,6 +305,12 @@ export async function POST(request: Request) {
         patient,
         prescriber: body.prescriber,
         shippingMethod: body.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
+        platformProductIdBySku: Object.fromEntries(
+          resolvedLines.map(({ line, product }) => [
+            product.sku,
+            line.platformProductId || (line.sku.match(/^[0-9a-f-]{36}$/i) ? line.sku : "") || product.rxcoreFormularyId || product.sku,
+          ]),
+        ),
       },
     });
     await audit({
@@ -271,6 +324,7 @@ export async function POST(request: Request) {
       orderId: order.id,
       invoiceNumber: order.invoiceNumber,
       rxhereOrderId: rxcoreOrderId,
+      status: "submitted",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Pharmacy submission failed.";
@@ -278,6 +332,12 @@ export async function POST(request: Request) {
       where: { id: order.id },
       data: { status: "on_hold", splitMessage: message },
     });
-    return NextResponse.json({ ok: true, orderId: order.id, invoiceNumber: order.invoiceNumber, warning: message });
+    return NextResponse.json({
+      ok: true,
+      orderId: order.id,
+      invoiceNumber: order.invoiceNumber,
+      warning: message,
+      status: "on_hold",
+    });
   }
 }

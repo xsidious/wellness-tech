@@ -3,12 +3,14 @@ export function PageBanner({
   title,
   lede,
   image,
+  imageFit = "cover",
   children,
 }: {
   kicker: string;
   title: string;
   lede: string;
   image: string;
+  imageFit?: "cover" | "contain";
   children?: React.ReactNode;
 }) {
   return (
@@ -20,7 +22,11 @@ export function PageBanner({
           <p className="lede">{lede}</p>
           {children}
         </div>
-        <img className="banner-photo" src={image} alt="" />
+        <img
+          className={imageFit === "contain" ? "banner-photo banner-photo-contain" : "banner-photo"}
+          src={image}
+          alt=""
+        />
       </div>
     </section>
   );

@@ -7,13 +7,47 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { encryptField, hashKey, rejectCardNumber, tokenizeLast4 } from "@/lib/crypto";
 import { clearLogin, readPending, readUserId, setLogin, setPending } from "@/lib/session";
-import { canOrder, fulfillmentGroups, isProductClass, shippingCents } from "@/lib/rules";
+import { canOrder, fulfillmentGroups, isProductClass, requiresEscript, shippingCents } from "@/lib/rules";
+import { ensurePharmacyNetwork } from "@/lib/ensure-pharmacies";
 import { createExternalOrder, emitOrderEvent, ensurePatient, nextEvent, openRxcoreOrder } from "@/lib/rxcore";
 import { rolesOf } from "@/lib/guard";
-import { honeypotTripped, rateLimit, verifyTurnstile } from "@/lib/anti-bot";
+import { honeypotTripped, verifyTurnstile } from "@/lib/anti-bot";
+import { sendMagicLoginCode } from "@/lib/email";
+import {
+  assertNotLockedOut,
+  assertNotRateLimited,
+  assertSameOrigin,
+  assertStrongPassword,
+  genericAuthError,
+  recordLoginFailure,
+  recordLoginSuccess,
+  requestClientMeta,
+} from "@/lib/auth-security";
 
+function sandboxAuthEnabled() {
+  return (process.env.SANDBOX_AUTH || "").trim().toLowerCase() === "true";
+}
+
+function paymentsSandboxEnabled() {
+  const mode = (process.env.PAYMENTS_MODE || "").trim().toLowerCase();
+  if (mode === "live" || mode === "production") return false;
+  if (mode === "sandbox") return true;
+  return sandboxAuthEnabled() || (process.env.PAYMENTS_SANDBOX || "true").trim().toLowerCase() !== "false";
+}
+
+function homePathForRoles(rolesRaw: string) {
+  const roles = rolesOf(rolesRaw);
+  if (roles.includes("admin") && !roles.some((r) => ["owner", "prescriber", "staff"].includes(r))) return "/admin";
+  if (roles.includes("pharmacy") && !roles.some((r) => ["owner", "prescriber", "staff", "admin"].includes(r))) {
+    return "/pharmacy";
+  }
+  if (roles.includes("patient")) return "/patient/portal";
+  return "/portal";
+}
+
+/** Only echo codes in the UI when explicitly sandboxed. Live always emails the code. */
 function sandboxCode(code: string) {
-  return process.env.SANDBOX_AUTH === "false" ? "" : code;
+  return sandboxAuthEnabled() ? code : "";
 }
 
 function signInError(error: unknown) {
@@ -27,34 +61,113 @@ function signInError(error: unknown) {
   return message.slice(0, 180);
 }
 
-/** One-step staff admin login (email + password) — clearer than magic code + PIN. */
+/** Staff admin login — password + bot check + lockout. */
 export async function adminPasswordLogin(formData: FormData) {
+  const meta = await requestClientMeta();
   try {
     if (honeypotTripped(formData)) return { error: "Unable to sign in." };
+    const originCheck = assertSameOrigin(meta);
+    if (!originCheck.ok) return { error: originCheck.error };
+
     const email = String(formData.get("email") || "").trim().toLowerCase();
     const password = String(formData.get("password") || "");
     const turnstile = String(formData.get("cf-turnstile-response") || "");
     if (!email.includes("@") || password.length < 8) return { error: "Enter admin email and password." };
 
-    const limited = rateLimit(`wt-admin-login:${email}`, 8, 10 * 60 * 1000);
-    if (!limited.ok) return { error: "Too many attempts. Wait a few minutes." };
+    const limited = await assertNotRateLimited(meta.ip, email);
+    if (!limited.ok) return { error: limited.error };
+    const locked = await assertNotLockedOut(email);
+    if (!locked.ok) return { error: locked.error };
 
-    const bot = await verifyTurnstile(turnstile);
+    const bot = await verifyTurnstile(turnstile, meta.ip);
     if (!bot.ok) return { error: bot.error || "Bot check failed." };
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user?.passwordHash || !rolesOf(user.roles).includes("admin")) {
+    const okAdmin = Boolean(user?.passwordHash && rolesOf(user.roles).includes("admin"));
+    const okPass = okAdmin && user ? await bcrypt.compare(password, user.passwordHash) : false;
+    if (!user || !okAdmin || !okPass) {
+      await recordLoginFailure(email, meta.ip, "admin_invalid");
       return { error: "Invalid admin credentials." };
     }
-    if (!(await bcrypt.compare(password, user.passwordHash))) {
-      return { error: "Invalid admin credentials." };
-    }
+
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-    await audit({ actorId: user.id, action: "auth.admin_password_login", object: user.email });
+    await recordLoginSuccess(user.id, user.email, meta.ip, "admin_password", meta.ua);
     await setLogin(user.id);
     const next = String(formData.get("next") || "");
     const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/admin";
     redirect(safeNext.startsWith("/admin") ? safeNext : "/admin");
+  } catch (error) {
+    return { error: signInError(error) };
+  }
+}
+
+async function passwordMatchesUser(user: { passwordHash: string; mfaHash: string }, password: string) {
+  if (user.passwordHash) {
+    if (await bcrypt.compare(password, user.passwordHash)) return true;
+  }
+  // Sandbox-only bridge: old demo accounts that only stored a PIN.
+  if (sandboxAuthEnabled() && user.mfaHash && /^\d{6}$/.test(password)) {
+    return bcrypt.compare(password, user.mfaHash);
+  }
+  return false;
+}
+
+/**
+ * Practice / affiliate login: email + password, then PIN when MFA is enabled.
+ * Lockout, origin check, Turnstile (when configured), and audit trails apply.
+ */
+export async function practicePasswordLogin(formData: FormData) {
+  const meta = await requestClientMeta();
+  try {
+    if (honeypotTripped(formData)) return { error: "Unable to sign in." };
+    const originCheck = assertSameOrigin(meta);
+    if (!originCheck.ok) return { error: originCheck.error };
+
+    const email = String(formData.get("email") || "").trim().toLowerCase();
+    const password = String(formData.get("password") || "");
+    const turnstile = String(formData.get("cf-turnstile-response") || "");
+    if (!email.includes("@") || password.length < 8) {
+      return { error: "Enter your email and password." };
+    }
+
+    const limited = await assertNotRateLimited(meta.ip, email);
+    if (!limited.ok) return { error: limited.error };
+    const locked = await assertNotLockedOut(email);
+    if (!locked.ok) return { error: locked.error };
+
+    const bot = await verifyTurnstile(turnstile, meta.ip);
+    if (!bot.ok) return { error: bot.error || "Bot check failed." };
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !(await passwordMatchesUser(user, password))) {
+      await recordLoginFailure(email, meta.ip, "practice_invalid");
+      // Uniform message — do not reveal whether the email exists.
+      return { error: genericAuthError() };
+    }
+
+    // Always step-up when a PIN factor exists (ignore stale mfaEnabled=false).
+    if (user.mfaHash) {
+      await setPending(email);
+      if (!user.mfaEnabled) {
+        await prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: true } });
+      }
+      await audit({
+        actorId: user.id,
+        action: "auth.password_ok_awaiting_mfa",
+        object: user.email,
+        ip: meta.ip,
+      });
+      return { next: "mfa" as const, email };
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await recordLoginSuccess(user.id, user.email, meta.ip, "practice_password", meta.ua);
+    await setLogin(user.id);
+
+    const next = String(formData.get("next") || "");
+    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "";
+    const home = homePathForRoles(user.roles);
+    redirect(safeNext || home);
   } catch (error) {
     return { error: signInError(error) };
   }
@@ -77,6 +190,15 @@ export async function requestMagic(formData: FormData) {
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
     });
+    try {
+      await sendMagicLoginCode(email, code);
+    } catch (error) {
+      // Live login requires email delivery. Sandbox can still show the code on-screen.
+      if (!sandboxAuthEnabled()) {
+        return { error: "Could not send the login email. Try again shortly." };
+      }
+      console.error("Magic code email failed in sandbox:", error);
+    }
     await audit({ action: "auth.code_sent", object: email });
     return { code: sandboxCode(code), email };
   } catch (error) {
@@ -107,42 +229,68 @@ export async function verifyMagic(formData: FormData) {
 }
 
 export async function confirmMfa(formData: FormData) {
+  const meta = await requestClientMeta();
   try {
     const email = await readPending();
     const pin = String(formData.get("pin") || "").trim();
-    if (!email) return { error: "Start again from the email code." };
+    if (!email) return { error: "Start again from email and password." };
     if (!/^\d{6}$/.test(pin)) return { error: "The second factor is 6 digits." };
+
+    const limited = await assertNotRateLimited(meta.ip, `mfa:${email}`);
+    if (!limited.ok) return { error: limited.error };
+
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.mfaHash) return { error: "Set up the second factor first." };
-    if (!(await bcrypt.compare(pin, user.mfaHash))) return { error: "That PIN does not match." };
+    if (!(await bcrypt.compare(pin, user.mfaHash))) {
+      await recordLoginFailure(email, meta.ip, "mfa_invalid");
+      return { error: "That PIN does not match." };
+    }
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-    await audit({ actorId: user.id, action: "auth.login", object: user.email });
+    await recordLoginSuccess(user.id, user.email, meta.ip, "password_plus_mfa", meta.ua);
     await setLogin(user.id);
     const next = String(formData.get("next") || "");
     const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "";
-    redirect(safeNext || (rolesOf(user.roles).includes("admin") ? "/admin" : "/portal"));
+    redirect(safeNext || homePathForRoles(user.roles));
   } catch (error) {
     return { error: signInError(error) };
   }
 }
 
 export async function completeSignup(formData: FormData) {
-  const email = await readPending();
-  if (!email) return { error: "Verify the email code first." };
+  const meta = await requestClientMeta();
+  if (honeypotTripped(formData)) return { error: "Unable to create account." };
+  const originCheck = assertSameOrigin(meta);
+  if (!originCheck.ok) return { error: originCheck.error };
+
+  const pendingEmail = await readPending();
+  const email = (pendingEmail || String(formData.get("email") || "")).trim().toLowerCase();
+  if (!email.includes("@")) return { error: "Enter a valid email." };
   const name = String(formData.get("name") || "").trim();
   const legalName = String(formData.get("legalName") || "").trim();
   const accountType = String(formData.get("accountType") || "practice");
+  const password = String(formData.get("password") || "");
   const pin = String(formData.get("pin") || "").trim();
   const ref = String(formData.get("ref") || "").trim().toUpperCase();
+  const turnstile = String(formData.get("cf-turnstile-response") || "");
   if (name.length < 2 || legalName.length < 2) return { error: "Name and organization are required." };
-  if (!/^\d{6}$/.test(pin)) return { error: "Choose a 6-digit second factor." };
+  const strong = assertStrongPassword(password);
+  if (!strong.ok) return { error: strong.error };
+  if (!/^\d{6}$/.test(pin)) return { error: "Choose a 6-digit security PIN (second factor)." };
+
+  const bot = await verifyTurnstile(turnstile, meta.ip);
+  if (!bot.ok) return { error: bot.error || "Bot check failed." };
+
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return { error: "That email already has an account. Sign in instead." };
 
   let referringAffiliateId = "";
+  let parentAffiliateProfileId: string | null = null;
   if (ref) {
     const affiliate = await prisma.affiliateProfile.findUnique({ where: { code: ref } });
-    if (affiliate) referringAffiliateId = affiliate.userId;
+    if (affiliate) {
+      referringAffiliateId = affiliate.userId;
+      if (accountType === "affiliate") parentAffiliateProfileId = affiliate.id;
+    }
   }
   const roles =
     accountType === "affiliate"
@@ -167,19 +315,24 @@ export async function completeSignup(formData: FormData) {
       email,
       name,
       roles: JSON.stringify(roles),
-      mfaHash: await bcrypt.hash(pin, 8),
+      passwordHash: await bcrypt.hash(password, 12),
+      mfaHash: await bcrypt.hash(pin, 10),
       mfaEnabled: true,
       lastLoginAt: new Date(),
     },
   });
   if (accountType === "affiliate") {
     const code = legalName.replace(/[^A-Za-z]/g, "").slice(0, 8).toUpperCase() || "PARTNER";
+    const affiliateCode = `${code}${randomInt(10, 99)}`;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.thewellnesstech.com").replace(/\/$/, "");
     await prisma.affiliateProfile.create({
       data: {
         userId: user.id,
-        code: `${code}${randomInt(10, 99)}`,
+        code: affiliateCode,
         payoutToken: "tok_bank_sandbox",
         w9Status: "sandbox_received",
+        parentId: parentAffiliateProfileId,
+        partnerLink: `${appUrl}/signup?ref=${affiliateCode}`,
       },
     });
   }
@@ -287,51 +440,91 @@ export async function placeOrder(formData: FormData) {
   if (!userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { org: true, credential: true } });
   if (!user) redirect("/login");
+
+  const shipDestination = String(formData.get("shipDestination") || "PRACTICE").toUpperCase() === "PATIENT" ? "PATIENT" : "PRACTICE";
+  const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
+  const opaqueToken = String(formData.get("paymentNonce") || formData.get("opaqueDataValue") || "").trim();
   const rawLast4 = String(formData.get("last4") || "");
   const cardField = String(formData.get("card") || "");
   if (rejectCardNumber(rawLast4) || rejectCardNumber(cardField)) {
     return { error: "Send only the last four digits. Full card numbers are refused." };
   }
-  let payment;
-  try {
-    payment = tokenizeLast4(rawLast4);
-  } catch {
-    return { error: "Enter the last four digits of the saved card." };
+
+  const sandboxPay = paymentsSandboxEnabled();
+  let paymentToken = "";
+  let cardLast4 = "";
+  let paymentStatus = "authorized";
+
+  if (sandboxPay) {
+    try {
+      const payment = tokenizeLast4(rawLast4 || "4242");
+      paymentToken = payment.token;
+      cardLast4 = payment.last4;
+      paymentStatus = "authorized";
+    } catch {
+      return { error: "Enter the last four digits of the saved card." };
+    }
+  } else {
+    if (!opaqueToken) {
+      return { error: "Live payments require a gateway nonce. Set PAYMENTS_MODE=sandbox for demos." };
+    }
+    paymentToken = `live_${opaqueToken.slice(0, 48)}`;
+    cardLast4 = rawLast4.replace(/\D/g, "").slice(-4) || "****";
+    paymentStatus = "paid";
   }
+
   const items = await prisma.cartItem.findMany({ where: { userId: user.id } });
   if (!items.length) return { error: "The cart is empty." };
   const products = await prisma.product.findMany({ where: { id: { in: items.map((item) => item.productId) } } });
   const byId = new Map(products.map((product) => [product.id, product]));
+  const hasVerifiedPrescriber = Boolean(user.credential && user.credential.verificationTier >= 1);
   const classes = [];
   let subtotal = 0;
+  let needsEscript = false;
   for (const item of items) {
     const product = byId.get(item.productId);
     if (!product || !isProductClass(product.productClass)) return { error: "A cart line is no longer available." };
-    const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable);
+    const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
+      hasVerifiedPrescriber: product.productClass === "503A" || product.productClass === "503B" ? hasVerifiedPrescriber : undefined,
+    });
     if (!gate.ok) return { error: gate.reason };
     if (product.rxRequired && item.patientInitials.trim().length < 2) {
       return { error: "Each prescription line needs patient initials." };
     }
+    if (requiresEscript(product.productClass, product.rxRequired)) needsEscript = true;
     classes.push(product.productClass);
     subtotal += product.priceCents * item.qty;
   }
+
+  if (needsEscript && !signatureDataUrl.startsWith("data:image")) {
+    return { error: "503A/503B lines require a signed eScript before the order can go to pharmacy." };
+  }
+
   const split = fulfillmentGroups(classes);
   const shipping = shippingCents(products.map((product) => product.storage));
+  const pharmacies = await ensurePharmacyNetwork();
+  const eventide = pharmacies.find((p) => /eventide/i.test(p.name)) || pharmacies[0];
+  const clinicalPatientId = items.map((i) => i.clinicalPatientId).find(Boolean) || null;
   const count = await prisma.order.count();
   const order = await prisma.order.create({
     data: {
       orgId: user.orgId,
       placedById: user.id,
+      clinicalPatientId: clinicalPatientId || undefined,
+      pharmacyId: eventide?.id,
       invoiceNumber: `WT-2026-${String(count + 1).padStart(4, "0")}`,
-      status: "submitted",
-      paymentStatus: "authorized",
-      paymentToken: payment.token,
-      cardLast4: payment.last4,
+      status: needsEscript && !signatureDataUrl ? "on_hold" : "submitted",
+      paymentStatus,
+      paymentToken,
+      cardLast4,
       shippingFeeCents: shipping,
       subtotalCents: subtotal,
       totalCents: subtotal + shipping,
+      shipDestination,
+      escriptStatus: needsEscript ? (signatureDataUrl ? "signed" : "pending_signature") : "not_required",
       source: "portal",
       splitMessage: split.message,
+      shipToJson: JSON.stringify({ destination: shipDestination }),
       lines: {
         create: items.map((item) => {
           const product = byId.get(item.productId)!;
@@ -345,12 +538,32 @@ export async function placeOrder(formData: FormData) {
             prescriber: user.credential?.displayName || user.name,
             sig: item.sig,
             daysSupply: item.daysSupply,
+            strength: product.strength,
+            size: product.size,
+            dosageForm: product.form,
           };
         }),
       },
     },
     include: { lines: true },
   });
+
+  if (needsEscript) {
+    await prisma.eScript.create({
+      data: {
+        orderId: order.id,
+        clinicalPatientId: clinicalPatientId || undefined,
+        status: signatureDataUrl ? "signed" : "draft",
+        signatureDataUrl: signatureDataUrl || "",
+        signedById: signatureDataUrl ? user.id : undefined,
+        signedAt: signatureDataUrl ? new Date() : undefined,
+        npi: user.credential?.npi || "",
+        displayName: user.credential?.displayName || user.name,
+        directions: String(formData.get("directions") || "As directed by prescribing clinician."),
+      },
+    });
+  }
+
   for (const line of order.lines) {
     if (!line.patientInitials) continue;
     const patient = await ensurePatient(user.orgId, line.patientInitials);
@@ -359,14 +572,38 @@ export async function placeOrder(formData: FormData) {
     }
   }
   await prisma.cartItem.deleteMany({ where: { userId: user.id } });
-  await openRxcoreOrder({
-    orderId: order.id,
-    lines: order.lines.filter((line) => isProductClass(line.productClass)).map((line) => ({
-      productClass: line.productClass as "503A",
-      patientInitials: line.patientInitials,
-    })),
-  });
-  await audit({ actorId: user.id, action: "order.placed", object: order.invoiceNumber });
+
+  // Block pharmacy forward until eScript is signed for Rx classes
+  if (!needsEscript || signatureDataUrl.startsWith("data:image")) {
+    await openRxcoreOrder({
+      orderId: order.id,
+      lines: order.lines.filter((line) => isProductClass(line.productClass)).map((line) => ({
+        productClass: line.productClass as "503A",
+        patientInitials: line.patientInitials,
+      })),
+    });
+  }
+
+  // Draft refill reminders from days supply
+  for (const line of order.lines) {
+    if (!line.daysSupply || line.daysSupply < 7 || !line.patientInitials) continue;
+    const due = new Date();
+    due.setDate(due.getDate() + Math.max(7, line.daysSupply - 7));
+    await prisma.refill.create({
+      data: {
+        orgId: user.orgId,
+        patientInitials: line.patientInitials,
+        productName: line.name,
+        productSku: line.sku,
+        dueAt: due,
+        daysSupply: line.daysSupply,
+        status: "due",
+        autopay: Boolean(paymentToken),
+      },
+    });
+  }
+
+  await audit({ actorId: user.id, action: "order.placed", object: order.invoiceNumber, after: `ship:${shipDestination};escript:${order.escriptStatus}` });
   redirect(`/portal/orders/${order.id}`);
 }
 

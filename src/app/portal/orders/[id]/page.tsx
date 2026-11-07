@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClinicalChartView } from "@/components/ClinicalChartView";
+import { SignaturePad } from "@/components/escript/SignaturePad";
+import { PageHeader, SectionCard, StatusBadge, statusTone } from "@/components/portal/Workspace";
 import { advanceOrder } from "@/lib/actions";
 import { requireUser } from "@/lib/guard";
+import { signEscript } from "@/lib/practice-actions";
 import { prisma } from "@/lib/prisma";
 
 const STEPS = ["received", "verified", "compounding", "shipped", "delivered", "submitted", "on_hold"];
@@ -15,26 +18,53 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
       lines: true,
       events: { orderBy: { createdAt: "asc" } },
       clinicalPatient: true,
+      pharmacy: true,
+      escripts: { orderBy: { createdAt: "desc" }, take: 3 },
     },
   });
   if (!order) notFound();
 
   const timelineStatus = order.status === "submitted" ? "received" : order.status;
+  const pendingEscript = order.escriptStatus === "pending_signature" || order.escripts.some((e) => e.status !== "signed");
 
   return (
-    <>
-      <div className="dash-head">
-        <div>
-          <p className="kicker">Order</p>
-          <p className="muted">
-            <Link href="/portal/orders">← All orders</Link>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Order"
+        title={order.invoiceNumber}
+        lede={`Ship to ${order.shipDestination || "PRACTICE"} · eScript ${order.escriptStatus}`}
+        actions={
+          <div className="ws-head-actions">
+            <Link className="btn btn-ghost" href="/portal/orders">
+              All orders
+            </Link>
             {order.clinicalPatientId ? (
-              <>
-                {" · "}
-                <Link href={`/portal/patients/${order.clinicalPatientId}`}>Open patient chart</Link>
-              </>
+              <Link className="btn btn-ghost" href={`/portal/patients/${order.clinicalPatientId}`}>
+                Patient chart
+              </Link>
             ) : null}
-          </p>
+          </div>
+        }
+      />
+
+      <div className="ws-stat-grid">
+        <div className="ws-stat">
+          <span className="ws-stat-label">Status</span>
+          <strong className="ws-stat-value" style={{ fontSize: "1.1rem" }}>
+            <StatusBadge tone={statusTone(order.status)}>{order.status}</StatusBadge>
+          </strong>
+        </div>
+        <div className="ws-stat">
+          <span className="ws-stat-label">Pharmacy</span>
+          <strong className="ws-stat-value" style={{ fontSize: "1.05rem" }}>
+            {order.pharmacy?.name || "Unassigned"}
+          </strong>
+        </div>
+        <div className="ws-stat">
+          <span className="ws-stat-label">Tracking</span>
+          <strong className="ws-stat-value" style={{ fontSize: "1.05rem" }}>
+            {order.trackingNumber || "—"}
+          </strong>
         </div>
       </div>
 
@@ -51,6 +81,22 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
         ))}
       </div>
       {order.splitMessage ? <p className="note">{order.splitMessage}</p> : null}
+
+      {pendingEscript ? (
+        <SectionCard title="Sign eScript" description="Pharmacy forward is blocked until a credentialed signature is on file.">
+          <form action={signEscript} className="ws-message-form">
+            <input type="hidden" name="orderId" value={order.id} />
+            <label>
+              Directions
+              <input name="directions" defaultValue="As directed by prescribing clinician." />
+            </label>
+            <SignaturePad />
+            <button className="btn btn-accent" type="submit">
+              Sign and release to pharmacy
+            </button>
+          </form>
+        </SectionCard>
+      ) : null}
 
       <ClinicalChartView
         chartRaw={order.clinicalChartJson || order.clinicalPatient?.clinicalChartJson}
@@ -71,8 +117,7 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
         notes={order.notes}
       />
 
-      <section className="panel">
-        <h2>Status events</h2>
+      <SectionCard title="Status events">
         <ul>
           {order.events.map((event) => (
             <li key={event.id}>
@@ -89,7 +134,7 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
         ) : (
           <p className="note">Delivered. Prescription lines do not post affiliate commission.</p>
         )}
-      </section>
-    </>
+      </SectionCard>
+    </div>
   );
 }

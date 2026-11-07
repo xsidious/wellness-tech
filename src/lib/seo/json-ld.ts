@@ -30,7 +30,7 @@ export function professionalServiceJsonLd() {
     url: getAppUrl(),
     image: absoluteUrl("/images/hero-clinic.jpg"),
     description:
-      "503A and 503B compounded therapies, peptides, GLP-1s, exosomes, and clinical supplies for licensed practices.",
+      "503A and 503B compounded therapies, GLP-1s, exosomes, and clinical supplies for licensed practices.",
     areaServed: { "@type": "Country", name: "United States" },
     audience: {
       "@type": "BusinessAudience",

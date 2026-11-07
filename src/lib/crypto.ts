@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 function material(name: "SESSION_SECRET" | "FIELD_KEY" | "RXCORE_WEBHOOK_SECRET") {
-  const value = process.env[name];
+  const value = (process.env[name] || "").trim();
   if (!value || value.length < 16) {
     throw new Error(`${name} is missing.`);
   }

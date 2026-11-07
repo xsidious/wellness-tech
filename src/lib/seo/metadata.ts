@@ -12,7 +12,7 @@ type SeoInput = {
 const siteName = "Wellness Tech Distribution";
 const defaultTitle = "503A & 503B Therapies for Licensed Practices";
 const defaultDescription =
-  "Compounded peptides, GLP-1s, exosomes, and clinical supplies for licensed practices — one account, one cart, RxHere fulfillment.";
+  "Compounded GLP-1s, exosomes, and clinical supplies for licensed practices — one account, one cart, pharmacy fulfillment.";
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.thewellnesstech.com";
 const defaultImage = "/images/hero-clinic.jpg";
 

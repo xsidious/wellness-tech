@@ -1,0 +1,18 @@
+---
+description: Never create Vercel projects or move domains without explicit user request
+alwaysApply: true
+---
+
+# No unsolicited Vercel projects / domain moves
+
+## Hard rules
+
+- Do **not** create a new Vercel project unless the user **explicitly** asks to create one.
+- Do **not** add, move, or remove custom domains on a Vercel project unless the user **explicitly** asks for that domain action on that project.
+- Do **not** “fix” domain conflicts by attaching the same domain to a second project/account on your own.
+- If a domain is already on a project, leave it. Ask before changing ownership or adding it elsewhere.
+- Deploying to an **existing** linked project the user already uses is fine; inventing a second home for the same app/domain is not.
+
+## If unsure
+
+Stop and ask which Vercel team/project and which domain action they want.

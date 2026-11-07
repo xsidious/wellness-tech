@@ -17,6 +17,7 @@ model Organization {
   referringAffiliateId String   @default("")
   assignedRep          String   @default("Alex Morgan")
   slug                 String   @unique
+  onboardingComplete   Boolean  @default(false)
   createdAt            DateTime @default(now())
   users                User[]
   orders               Order[]
@@ -24,6 +25,23 @@ model Organization {
   clinicalPatients     ClinicalPatient[]
   apiKeys              ApiKey[]
   messages             Message[]
+  locations            PracticeLocation[]
+  settlements          Settlement[]
+}
+
+model PracticeLocation {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  label     String       @default("Main")
+  street1   String       @default("")
+  street2   String       @default("")
+  city      String       @default("")
+  state     String       @default("")
+  zip       String       @default("")
+  phone     String       @default("")
+  isDefault Boolean      @default(false)
+  createdAt DateTime     @default(now())
 }
 
 model User {
@@ -37,12 +55,17 @@ model User {
   passwordHash String    @default("")
   mfaHash      String    @default("")
   mfaEnabled   Boolean   @default(false)
+  pharmacyId String?
+  pharmacy   Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
+  clinicalPatientId String?
+  clinicalPatient   ClinicalPatient? @relation("PatientUser", fields: [clinicalPatientId], references: [id], onDelete: SetNull)
   lastLoginAt DateTime?
   createdAt  DateTime  @default(now())
   credential PrescriberCredential?
   cartItems  CartItem[]
   orders     Order[] @relation("PlacedBy")
   affiliate  AffiliateProfile?
+  escriptsSigned EScript[] @relation("EScriptSigner")
 }
 
 model MagicCode {
@@ -126,6 +149,9 @@ model ClinicalPatient {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   orders             Order[]
+  portalUsers        User[]       @relation("PatientUser")
+  escripts           EScript[]
+  refillRequests     RefillRequest[]
 
   @@unique([orgId, email, kianIntakeId])
   @@index([email])
@@ -141,8 +167,10 @@ model CartItem {
   qty             Int
   patientInitials String @default("")
   rxcorePatientId String @default("")
+  clinicalPatientId String @default("")
   sig             String @default("")
   daysSupply      Int    @default(30)
+  shipDestination String @default("PRACTICE")
 }
 
 model Order {
@@ -153,6 +181,8 @@ model Order {
   placedBy           User     @relation("PlacedBy", fields: [placedById], references: [id])
   clinicalPatientId  String?
   clinicalPatient    ClinicalPatient? @relation(fields: [clinicalPatientId], references: [id], onDelete: SetNull)
+  pharmacyId         String?
+  pharmacy           Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
   invoiceNumber      String   @unique
   status             String
   paymentStatus      String
@@ -166,7 +196,9 @@ model Order {
   rxhereBatchId      String   @default("")
   partnerExternalRef String   @default("")
   shippingMethod     String   @default("2_DAY")
+  shipDestination    String   @default("PRACTICE")
   trackingNumber     String   @default("")
+  escriptStatus      String   @default("not_required")
   patientCipher      String   @default("")
   patientJson        String   @default("")
   prescriberJson     String   @default("")
@@ -183,11 +215,15 @@ model Order {
   lines              OrderLine[]
   events             OrderEvent[]
   commissions        Commission[]
+  escripts           EScript[]
+  settlementLines    SettlementLine[]
 
   @@index([partnerExternalRef])
   @@index([rxhereOrderId])
   @@index([kianIntakeId])
   @@index([clinicalPatientId])
+  @@index([pharmacyId])
+  @@index([escriptStatus])
 }
 
 model OrderLine {
@@ -241,6 +277,10 @@ model AffiliateProfile {
   w9Status       String @default("sandbox_received")
   payoutToken    String @default("")
   commissionPlan String @default("devices-and-supplies-10")
+  parentId       String?
+  parent         AffiliateProfile?  @relation("AffiliateDownline", fields: [parentId], references: [id], onDelete: SetNull)
+  children       AffiliateProfile[] @relation("AffiliateDownline")
+  partnerLink    String @default("")
 }
 
 model Commission {
@@ -312,4 +352,96 @@ model IdempotencyKey {
   key       String   @unique
   response  String
   createdAt DateTime @default(now())
+}
+
+model Pharmacy {
+  id            String   @id @default(cuid())
+  name          String
+  type          String   @default("Hybrid")
+  region        String   @default("")
+  status        String   @default("online")
+  specialtiesJson String @default("[]")
+  capabilitiesJson String @default("[]")
+  erpJson       String   @default("[]")
+  sla           String   @default("")
+  description   String   @default("")
+  contactEmail  String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orders        Order[]
+  users         User[]
+  locations     PharmacyLocation[]
+}
+
+model PharmacyLocation {
+  id         String   @id @default(cuid())
+  pharmacyId String
+  pharmacy   Pharmacy @relation(fields: [pharmacyId], references: [id])
+  label      String   @default("Main")
+  street1    String   @default("")
+  city       String   @default("")
+  state      String   @default("")
+  zip        String   @default("")
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model EScript {
+  id                 String   @id @default(cuid())
+  orderId            String
+  order              Order    @relation(fields: [orderId], references: [id])
+  clinicalPatientId  String?
+  clinicalPatient    ClinicalPatient? @relation(fields: [clinicalPatientId], references: [id], onDelete: SetNull)
+  signedById         String?
+  signedBy           User?    @relation("EScriptSigner", fields: [signedById], references: [id], onDelete: SetNull)
+  status             String   @default("draft")
+  npi                String   @default("")
+  displayName        String   @default("")
+  signatureDataUrl   String   @default("")
+  directions         String   @default("")
+  signedAt           DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model Settlement {
+  id          String   @id @default(cuid())
+  orgId       String?
+  org         Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  periodStart DateTime
+  periodEnd   DateTime
+  kind        String   @default("practice")
+  status      String   @default("open")
+  totalCents  Int      @default(0)
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+  closedAt    DateTime?
+  lines       SettlementLine[]
+
+  @@index([status])
+  @@index([orgId])
+}
+
+model SettlementLine {
+  id           String     @id @default(cuid())
+  settlementId String
+  settlement   Settlement @relation(fields: [settlementId], references: [id])
+  orderId      String?
+  order        Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  label        String
+  amountCents  Int
+  createdAt    DateTime   @default(now())
+}
+
+model RefillRequest {
+  id                String   @id @default(cuid())
+  clinicalPatientId String
+  clinicalPatient   ClinicalPatient @relation(fields: [clinicalPatientId], references: [id])
+  productSku        String   @default("")
+  productName       String
+  note              String   @default("")
+  status            String   @default("requested")
+  createdAt         DateTime @default(now())
 }

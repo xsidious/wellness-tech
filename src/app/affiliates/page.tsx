@@ -77,7 +77,7 @@ export default function AffiliatesPage() {
               <Link className="btn btn-ghost" href="/login">Sign in</Link>
             </div>
           </div>
-          <img className="photo" src={photos.equipment} alt="" style={{ height: 360 }} />
+          <img className="photo" src={photos.equipment} alt="" />
         </div>
       </section>
     </MarketingShell>

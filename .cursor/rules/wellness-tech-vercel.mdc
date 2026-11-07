@@ -1,0 +1,30 @@
+---
+description: Wellness Tech production is on beelzebub Vercel; other sites are on Alen's account
+alwaysApply: true
+---
+
+# Wellness Tech Vercel / GitHub ownership
+
+## Account split
+
+- **`beelzebub1st` / `beelzebub1sts-projects`** owns **KIAN Privé** and **Wellness Tech Distribution**.
+- **`xsidious` / `alens-projects-7f19d9b3` (alen's projects)** owns **all other websites** — not KIAN, not WT.
+
+## Canonical WT production project
+
+- **Team:** `beelzebub1sts-projects` (`team_Q5k86VXzF6yUv6Xb3z5WH5bI`)
+- **Project:** `wellnesstechdistribution` (`prj_B8jlGTCqzG8REHTfqL9sAjHGEEKB`)
+- **CLI:** `vercel whoami` must be **`beelzebub1st`**. If you see `xsidious`, switch before deploy/env/domain work.
+- **Local link:** `.vercel/project.json` → this project (not `alens-projects-7f19d9b3/wellnesstechdist`).
+
+## Hard rules
+
+- Deploy, env (`RESEND_*`, DB, RxHere), and domains for Wellness Tech go to **beelzebub’s `wellnesstechdistribution`**.
+- Do **not** treat `alens-projects-7f19d9b3/wellnesstechdist` as WT production.
+- Do **not** create new Vercel projects or attach WT domains to another project unless the user explicitly asks (`no-unsolicited-vercel-projects.mdc`).
+- Prefer archive deploy without local `.git` when Hobby git-author blocks apply: stage a copy without `.git`, then `npx vercel@48.12.1 deploy --prod --yes --force --archive=tgz`.
+
+## Resend / magic codes
+
+- Use Resend keys on the **beelzebub** WT project.
+- Custom-from addresses need a verified Resend domain; avoid leaving production on `onboarding@resend.dev` except for owner-only tests.

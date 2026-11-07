@@ -15,7 +15,7 @@ export default async function AdminProducts({
       <h1>Catalog</h1>
       <p>Edits here do not need a developer deploy.</p>
       <form action={syncRxHereFormularyAction} className="row" style={{ marginBottom: 16, flexWrap: "wrap" }}>
-        <button className="btn btn-accent" type="submit">Sync RxHere formulary</button>
+        <button className="btn btn-accent" type="submit">Sync formulary</button>
         <span className="muted">Probes the Partner API, then falls back to the local formulary file.</span>
       </form>
       {query.synced ? (

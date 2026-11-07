@@ -25,7 +25,7 @@ export default function StorefrontPage() {
       <PageBanner
         kicker="Fairfax Concierge"
         title="Personalized care, shipped to your door."
-        lede="Sample storefront. The practice is the seller and prescriber. RxHere dispenses. There is no clinician network on this page."
+        lede="Sample storefront. The practice is the seller and prescriber. A licensed compounding pharmacy dispenses. There is no clinician network on this page."
         image={photos.hero}
       />
       <section className="wrap section stack">
@@ -39,7 +39,7 @@ export default function StorefrontPage() {
             </article>
           ))}
         </div>
-        <p className="note">Compounded medications are not FDA-approved. A prescription is required. Eligibility is decided by a licensed clinician. Dispensed by RxHere.</p>
+        <p className="note">Compounded medications are not FDA-approved. A prescription is required. Eligibility is decided by a licensed clinician. Dispensed by our compounding partner.</p>
       </section>
     </MarketingShell>
   );

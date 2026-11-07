@@ -3,7 +3,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "About Wellness Tech",
-  description: "Wellness Tech owns the practice experience. RxHere owns the pharmacy - one account, one invoice, live order status.",
+  description: "Wellness Tech owns the practice experience. Licensed pharmacy partners handle fulfillment — one account, one invoice, live order status.",
   canonicalPath: "/about",
 });
 
@@ -16,7 +16,7 @@ export default function AboutPage() {
     <MarketingShell>
       <PageBanner
         kicker="About"
-        title="Wellness Tech owns the practice experience. RxHere owns the pharmacy."
+        title="Wellness Tech owns the practice experience. Licensed partners handle pharmacy fulfillment."
         lede="This app does not store patient charts. It keeps commercial accounts, pricing, and an RxCore reference for each order."
         image={photos.hero}
       />

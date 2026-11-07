@@ -1,4 +1,12 @@
 import Link from "next/link";
+import {
+  EmptyState,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+  statusTone,
+} from "@/components/portal/Workspace";
+import { runAffiliatePayout } from "@/lib/affiliate-actions";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
@@ -6,6 +14,8 @@ export default async function AdminAffiliatesPage() {
   const affiliates = await prisma.affiliateProfile.findMany({
     include: {
       user: { include: { org: true } },
+      children: { include: { user: true } },
+      parent: true,
     },
     orderBy: { code: "asc" },
   });
@@ -14,55 +24,71 @@ export default async function AdminAffiliatesPage() {
     take: 40,
     include: { order: true },
   });
+  const pendingCents = commissions.filter((c) => c.status === "pending_batch").reduce((s, c) => s + c.amountCents, 0);
 
   return (
-    <>
-      <div className="dash-head">
-        <div>
-          <p className="kicker">Growth</p>
-          <h1>Affiliates</h1>
-          <p className="lede">Referral partners, codes, and commission ledger.</p>
-        </div>
-      </div>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Growth"
+        title="Affiliates"
+        lede="Codes, referred orgs, downlines, and commission ledger — payout runs feed Settlements."
+        actions={
+          <form action={runAffiliatePayout}>
+            <button className="btn btn-accent" type="submit">
+              Run payout → Settlements ({money(pendingCents)})
+            </button>
+          </form>
+        }
+      />
 
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Org</th>
-              <th>W-9</th>
-              <th>Plan</th>
-            </tr>
-          </thead>
-          <tbody>
-            {affiliates.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  <b>{row.code}</b>
-                </td>
-                <td>{row.user.name}</td>
-                <td>{row.user.email}</td>
-                <td>
-                  <Link href={`/admin/practices/${row.user.orgId}`}>{row.user.org.legalName}</Link>
-                </td>
-                <td>{row.w9Status}</td>
-                <td>{row.commissionPlan}</td>
-              </tr>
-            ))}
-            {!affiliates.length ? (
-              <tr>
-                <td colSpan={6}>No affiliates yet.</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      <SectionCard title="Affiliate partners">
+        {affiliates.length ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Partner link</th>
+                  <th>Parent</th>
+                  <th>Downline</th>
+                  <th>W-9</th>
+                  <th>Plan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {affiliates.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <b>{row.code}</b>
+                    </td>
+                    <td>
+                      {row.user.name}
+                      <div className="muted">{row.user.email}</div>
+                      <div className="muted">
+                        <Link href={`/admin/practices/${row.user.orgId}`}>{row.user.org.legalName}</Link>
+                      </div>
+                    </td>
+                    <td className="muted" style={{ maxWidth: 220, wordBreak: "break-all" }}>
+                      {row.partnerLink || `/?ref=${row.code}`}
+                    </td>
+                    <td>{row.parent?.code || "—"}</td>
+                    <td>{row.children.map((c) => c.code).join(", ") || "—"}</td>
+                    <td>
+                      <StatusBadge tone={statusTone(row.w9Status)}>{row.w9Status}</StatusBadge>
+                    </td>
+                    <td>{row.commissionPlan}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No affiliates yet" body="Affiliate signups appear here with permanent partner links." />
+        )}
+      </SectionCard>
 
-      <section className="panel" style={{ marginTop: 24 }}>
-        <h2>Recent commissions</h2>
+      <SectionCard title="Recent commissions">
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -83,18 +109,22 @@ export default async function AdminAffiliatesPage() {
                   <td>{money(row.eligibleCents)}</td>
                   <td>{(row.rateBps / 100).toFixed(1)}%</td>
                   <td>{money(row.amountCents)}</td>
-                  <td>{row.status}</td>
+                  <td>
+                    <StatusBadge tone={statusTone(row.status)}>{row.status}</StatusBadge>
+                  </td>
                 </tr>
               ))}
               {!commissions.length ? (
                 <tr>
-                  <td colSpan={5}>No commission rows yet.</td>
+                  <td colSpan={5} className="muted">
+                    No commissions yet.
+                  </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
-      </section>
-    </>
+      </SectionCard>
+    </div>
   );
 }

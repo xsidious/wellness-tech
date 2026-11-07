@@ -5,6 +5,7 @@ export const photos = {
   peptides: "/images/category-peptides.jpg",
   exosomes: "/images/category-exosomes.jpg",
   equipment: "/images/category-equipment.jpg",
+  celexoPro: "/images/celexo-pro.png",
   supplies: "/images/category-supplies.jpg",
 } as const;
 

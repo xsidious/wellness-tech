@@ -1,101 +1,204 @@
 "use client";
 
-import { useActionState } from "react";
-import { completeSignup, confirmMfa, requestMagic, verifyMagic } from "@/lib/actions";
+import { useActionState, useState } from "react";
+import Link from "next/link";
+import { completeSignup, confirmMfa, practicePasswordLogin } from "@/lib/actions";
+import { TurnstileField } from "@/components/TurnstileField";
 
-export function LoginPanel({ nextPath = "" }: { nextPath?: string }) {
-  const [requested, requestAction, requesting] = useActionState(
-    async (_prev: { code?: string; email?: string; error?: string } | null, formData: FormData) => requestMagic(formData),
+export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?: string; turnstileSiteKey?: string }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [state, action, pending] = useActionState(
+    async (
+      _prev: { error?: string; next?: string; email?: string } | null,
+      formData: FormData,
+    ) => practicePasswordLogin(formData),
     null,
   );
-  const [verified, verifyAction, verifying] = useActionState(
-    async (_prev: { error?: string; next?: string; email?: string } | null, formData: FormData) => verifyMagic(formData),
-    null,
-  );
-  const [mfaError, mfaAction, mfaPending] = useActionState(
+  const [mfaState, mfaAction, mfaPending] = useActionState(
     async (_prev: { error?: string } | null, formData: FormData) => confirmMfa(formData),
     null,
   );
-  const email = verified?.email || requested?.email || "";
-  const onPin = verified?.next === "mfa" || verified?.next === "mfa-setup";
-  return (
-    <div className="form">
-      {!email ? (
-        <form action={requestAction}>
-          <p className="muted">Step 1 of 3. Practice / affiliate email, then the code that appears here.</p>
-          <label aria-hidden="true" style={{ position: "absolute", left: "-10000px", height: 0, overflow: "hidden" }}>
-            Company website
-            <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
-          </label>
-          <label>Email<input name="email" type="email" required autoComplete="username" placeholder="owner@fairfax.demo" /></label>
-          <button className="btn btn-accent" disabled={requesting}>{requesting ? "Sending code…" : "Email me a code"}</button>
-          {requested?.error ? <p className="error">{requested.error}</p> : null}
-          <p className="muted">Staff admin? <a href="/admin/login">Use the admin password login</a>.</p>
-        </form>
-      ) : null}
-      {email && !onPin ? (
-        <form action={verifyAction}>
-          <p className="muted">Step 2 of 3. Enter this code for {email}. It is not the PIN.</p>
-          {requested?.code ? <p className="note">Your code: <strong>{requested.code}</strong></p> : null}
-          <input type="hidden" name="email" value={email} />
-          <label>Code<input name="code" inputMode="numeric" autoComplete="one-time-code" required autoFocus /></label>
-          <button className="btn btn-dark" disabled={verifying}>{verifying ? "Checking…" : "Continue"}</button>
-          {verified?.error ? <p className="error">{verified.error}</p> : null}
-          {verified?.next === "signup" ? <p>No account yet. <a href={`/signup?email=${encodeURIComponent(email)}`}>Create one</a>.</p> : null}
-        </form>
-      ) : null}
-      {onPin ? (
-        <form action={mfaAction}>
+
+  const awaitingMfa = state?.next === "mfa";
+  const email = state?.email || "";
+
+  if (awaitingMfa && email) {
+    return (
+      <div className="auth-card">
+        <form className="auth-form" action={mfaAction}>
           <input type="hidden" name="next" value={nextPath} />
-          <p className="muted">Step 3 of 3. Demo accounts use PIN 246810.</p>
-          <label>6-digit PIN<input name="pin" inputMode="numeric" minLength={6} maxLength={6} required autoFocus /></label>
-          <button className="btn btn-accent" disabled={mfaPending}>{mfaPending ? "Signing in…" : "Sign in"}</button>
-          {mfaError?.error ? <p className="error">{mfaError.error}</p> : null}
+          <p className="auth-step-note">
+            Password accepted for <strong>{email}</strong>. Enter your 6-digit security PIN to finish.
+          </p>
+          <label className="auth-field">
+            <span>Security PIN</span>
+            <input
+              name="pin"
+              inputMode="numeric"
+              minLength={6}
+              maxLength={6}
+              required
+              autoFocus
+              autoComplete="one-time-code"
+              placeholder="••••••"
+            />
+          </label>
+          {mfaState?.error ? (
+            <p className="auth-error" role="alert">
+              {mfaState.error}
+            </p>
+          ) : null}
+          <button className="btn btn-accent auth-submit" disabled={mfaPending}>
+            {mfaPending ? "Verifying…" : "Complete sign-in"}
+          </button>
+          <p className="auth-meta">
+            <Link href="/login">Start over</Link>
+          </p>
         </form>
-      ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="auth-card">
+      <form className="auth-form" action={action}>
+        <label aria-hidden="true" className="auth-honeypot">
+          Company website
+          <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
+        </label>
+        <input type="hidden" name="next" value={nextPath} />
+        <label className="auth-field">
+          <span>Email</span>
+          <input
+            name="email"
+            type="email"
+            required
+            autoComplete="username"
+            placeholder="you@yourpractice.com"
+          />
+        </label>
+        <label className="auth-field">
+          <span>Password</span>
+          <span className="auth-password-wrap">
+            <input
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              autoComplete="current-password"
+              minLength={8}
+              placeholder="Enter your password"
+            />
+            <button
+              type="button"
+              className="auth-password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </span>
+        </label>
+        <TurnstileField siteKey={turnstileSiteKey} />
+        {state?.error ? (
+          <p className="auth-error" role="alert">
+            {state.error}
+          </p>
+        ) : null}
+        <button className="btn btn-accent auth-submit" disabled={pending}>
+          {pending ? "Signing in…" : "Sign in"}
+        </button>
+        <p className="auth-meta">
+          Staff catalog operators use the <Link href="/admin/login">admin login</Link>.
+        </p>
+      </form>
     </div>
   );
 }
 
-export function SignupPanel({ accountType, refCode, email }: { accountType: string; refCode: string; email: string }) {
-  const [requested, requestAction] = useActionState(
-    async (_prev: { code?: string; email?: string; error?: string } | null, formData: FormData) => requestMagic(formData),
-    null,
-  );
-  const [verified, verifyAction] = useActionState(
-    async (_prev: { error?: string; next?: string; email?: string } | null, formData: FormData) => verifyMagic(formData),
-    null,
-  );
-  const [signed, signupAction] = useActionState(
+export function SignupPanel({
+  accountType,
+  refCode,
+  email,
+  turnstileSiteKey = "",
+}: {
+  accountType: string;
+  refCode: string;
+  email: string;
+  turnstileSiteKey?: string;
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [signed, signupAction, pending] = useActionState(
     async (_prev: { error?: string } | null, formData: FormData) => completeSignup(formData),
     null,
   );
-  const readyEmail = verified?.email || requested?.email || email;
+
   return (
-    <div className="stack">
-      <form className="form" action={requestAction}>
-        <label>Email<input name="email" type="email" required defaultValue={readyEmail} /></label>
-        <button className="btn btn-accent">Email me a code</button>
-        {requested?.code ? <p className="note">Sandbox code: <strong>{requested.code}</strong></p> : null}
-        {requested?.error ? <p className="error">{requested.error}</p> : null}
+    <div className="auth-card">
+      <form className="auth-form" action={signupAction}>
+        <label aria-hidden="true" className="auth-honeypot">
+          Company website
+          <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
+        </label>
+        <input type="hidden" name="accountType" value={accountType} />
+        <input type="hidden" name="ref" value={refCode} />
+        <label className="auth-field">
+          <span>Email</span>
+          <input name="email" type="email" required defaultValue={email} autoComplete="username" />
+        </label>
+        <label className="auth-field">
+          <span>Password</span>
+          <span className="auth-password-wrap">
+            <input
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={10}
+              autoComplete="new-password"
+              placeholder="10+ chars, mixed case, number, symbol"
+            />
+            <button
+              type="button"
+              className="auth-password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </span>
+        </label>
+        <label className="auth-field">
+          <span>Your name</span>
+          <input name="name" required autoComplete="name" />
+        </label>
+        <label className="auth-field">
+          <span>Organization</span>
+          <input name="legalName" required placeholder="Practice or clinic name" />
+        </label>
+        <label className="auth-field">
+          <span>6-digit security PIN</span>
+          <input
+            name="pin"
+            inputMode="numeric"
+            minLength={6}
+            maxLength={6}
+            required
+            autoComplete="off"
+            placeholder="Second factor for sign-in"
+          />
+        </label>
+        <TurnstileField siteKey={turnstileSiteKey} />
+        {signed?.error ? (
+          <p className="auth-error" role="alert">
+            {signed.error}
+          </p>
+        ) : null}
+        <button className="btn btn-accent auth-submit" disabled={pending}>
+          {pending ? "Creating…" : "Create account"}
+        </button>
+        <p className="auth-meta">
+          Already registered? <Link href="/login">Sign in</Link>
+        </p>
       </form>
-      <form className="form" action={verifyAction}>
-        <input type="hidden" name="email" value={readyEmail} />
-        <label>Code<input name="code" required /></label>
-        <button className="btn btn-dark" disabled={!readyEmail}>Verify email</button>
-        {verified?.error ? <p className="error">{verified.error}</p> : null}
-      </form>
-      {verified?.next ? (
-        <form className="form" action={signupAction}>
-          <input type="hidden" name="accountType" value={accountType} />
-          <input type="hidden" name="ref" value={refCode} />
-          <label>Your name<input name="name" required /></label>
-          <label>Organization<input name="legalName" required /></label>
-          <label>6-digit second factor<input name="pin" inputMode="numeric" minLength={6} maxLength={6} required /></label>
-          <button className="btn btn-accent">Create account</button>
-          {signed?.error ? <p className="error">{signed.error}</p> : null}
-        </form>
-      ) : null}
     </div>
   );
 }

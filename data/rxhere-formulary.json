@@ -371,7 +371,7 @@
     "size": "5 mL",
     "total": "50mg",
     "price": 125.0,
-    "description": "Mitochondria-derived peptide improving insulin sensitivity and energy expenditure."
+    "description": "Mitochondria-derived therapy improving insulin sensitivity and energy expenditure."
   },
   {
     "sku": "FL-MOT-02",
@@ -382,7 +382,7 @@
     "size": "5 mL",
     "total": "10mg",
     "price": 70.0,
-    "description": "Mitochondria-derived peptide improving insulin sensitivity and energy expenditure."
+    "description": "Mitochondria-derived therapy improving insulin sensitivity and energy expenditure."
   },
   {
     "sku": "FL-5AM",
@@ -415,7 +415,7 @@
     "size": "each",
     "total": "200mcg",
     "price": 1.5,
-    "description": "Oral ERR\u03b1/\u03b4 agonist promoting mitochondrial biogenesis and metabolic rate."
+    "description": "Oral ERRα/δ agonist promoting mitochondrial biogenesis and metabolic rate."
   },
   {
     "sku": "FL-S33-02",
@@ -426,7 +426,7 @@
     "size": "each",
     "total": "1000mcg",
     "price": 1.5,
-    "description": "Oral ERR\u03b1/\u03b4 agonist promoting mitochondrial biogenesis and metabolic rate."
+    "description": "Oral ERRα/δ agonist promoting mitochondrial biogenesis and metabolic rate."
   },
   {
     "sku": "FL-BAM",
@@ -470,7 +470,7 @@
     "size": "5 mL",
     "total": "1000mg",
     "price": 85.0,
-    "description": "Neuropeptide mixture supporting neuronal repair and cognitive function."
+    "description": "neuro compound mixture supporting neuronal repair and cognitive function."
   },
   {
     "sku": "AA-FOX",
@@ -481,7 +481,7 @@
     "size": "5 mL",
     "total": "10mg",
     "price": 70.0,
-    "description": "Peptide selectively inducing apoptosis in senescent cells to rejuvenate tissue."
+    "description": "therapy selectively inducing apoptosis in senescent cells to rejuvenate tissue."
   },
   {
     "sku": "AA-GSH",
@@ -646,7 +646,7 @@
     "size": "5 mL",
     "total": "15mg",
     "price": 85.0,
-    "description": "Synthetic gastric pentadecapeptide accelerating tendon, ligament, gut, and muscle healing."
+    "description": "Synthetic gastric compound accelerating tendon, ligament, gut, and muscle healing."
   },
   {
     "sku": "TR-BPC-02",
@@ -657,7 +657,7 @@
     "size": "5 mL",
     "total": "20mg",
     "price": 95.0,
-    "description": "Synthetic gastric pentadecapeptide accelerating tendon, ligament, gut, and muscle healing."
+    "description": "Synthetic gastric compound accelerating tendon, ligament, gut, and muscle healing."
   },
   {
     "sku": "TR-BT5",
@@ -668,7 +668,7 @@
     "size": "5 mL",
     "total": "15mg/15mg",
     "price": 90.0,
-    "description": "Wolverine Stack \u2014 gut-healing BPC-157 combined with systemic repair peptide TB-500."
+    "description": "Wolverine Stack — gut-healing BPC-157 combined with systemic repair therapy TB-500."
   },
   {
     "sku": "TR-BTK",
@@ -690,7 +690,7 @@
     "size": "5 mL",
     "total": "15mg/15mg/15mg/50mg",
     "price": 90.0,
-    "description": "Advanced Wolverine Stack with copper peptide for added regenerative benefits."
+    "description": "Advanced Wolverine Stack with copper therapy for added regenerative benefits."
   },
   {
     "sku": "TR-TB5",
@@ -701,7 +701,7 @@
     "size": "5 mL",
     "total": "20mg",
     "price": 90.0,
-    "description": "Actin-binding peptide promoting cell migration, tissue regeneration, and anti-inflammation."
+    "description": "Actin-binding therapy promoting cell migration, tissue regeneration, and anti-inflammation."
   },
   {
     "sku": "TR-TB5-02",
@@ -712,7 +712,7 @@
     "size": "5 mL",
     "total": "15mg",
     "price": 70.0,
-    "description": "Actin-binding peptide promoting cell migration, tissue regeneration, and anti-inflammation."
+    "description": "Actin-binding therapy promoting cell migration, tissue regeneration, and anti-inflammation."
   },
   {
     "sku": "TR-BPC-03",
@@ -723,7 +723,7 @@
     "size": "each",
     "total": "500mcg",
     "price": 1.5,
-    "description": "Synthetic gastric pentadecapeptide accelerating tendon, ligament, gut, and muscle healing."
+    "description": "Synthetic gastric compound accelerating tendon, ligament, gut, and muscle healing."
   },
   {
     "sku": "TR-BKP",
@@ -745,7 +745,7 @@
     "size": "each",
     "total": "500mcg/500mcg",
     "price": 2.25,
-    "description": "Oral peptide duo targeting gut-lining inflammation and intestinal permeability."
+    "description": "Oral therapy duo targeting gut-lining inflammation and intestinal permeability."
   },
   {
     "sku": "TR-BPCN",
@@ -789,7 +789,7 @@
     "size": "5 mL",
     "total": "15mg",
     "price": 75.0,
-    "description": "Tetrapeptide bioregulator supporting cardiovascular tissue repair."
+    "description": "compound bioregulator supporting cardiovascular tissue repair."
   },
   {
     "sku": "LG-CTX",
@@ -800,7 +800,7 @@
     "size": "5 mL",
     "total": "15mg",
     "price": 50.0,
-    "description": "Peptide bioregulator promoting cartilage and connective tissue regeneration."
+    "description": "therapy bioregulator promoting cartilage and connective tissue regeneration."
   },
   {
     "sku": "LG-EPT",
@@ -811,7 +811,7 @@
     "size": "5 mL",
     "total": "10mg",
     "price": 75.0,
-    "description": "Tetrapeptide activating telomerase and supporting longevity pathways."
+    "description": "compound activating telomerase and supporting longevity pathways."
   },
   {
     "sku": "LG-SS3",
@@ -833,7 +833,7 @@
     "size": "each",
     "total": "3mg",
     "price": 2.0,
-    "description": "Telomerase-activating tetrapeptide with anti-aging and circadian properties."
+    "description": "Telomerase-activating compound with anti-aging and circadian properties."
   },
   {
     "sku": "LG-ETG",
@@ -844,7 +844,7 @@
     "size": "5 mL",
     "total": "100mg/50mg/20mg",
     "price": 145.0,
-    "description": "Longevity bioregulator stack pairing telomerase-activating Epitalon with thymic immune peptide Thymalin and copper regeneration peptide GHK-Cu."
+    "description": "Longevity bioregulator stack pairing telomerase-activating Epitalon with thymic immune therapy Thymalin and copper regeneration therapy GHK-Cu."
   },
   {
     "sku": "SL-DSP",
@@ -855,7 +855,7 @@
     "size": "5 mL",
     "total": "5mg",
     "price": 95.0,
-    "description": "Delta sleep-inducing peptide promoting deep sleep and regulating circadian stress response."
+    "description": "Delta sleep-inducing therapy promoting deep sleep and regulating circadian stress response."
   },
   {
     "sku": "SL-DBC",
@@ -866,7 +866,7 @@
     "size": "5 mL",
     "total": "5mg/10mg/10mg",
     "price": 125.0,
-    "description": "Night Repair Stack \u2014 sleep induction, tissue healing, and GH release overnight."
+    "description": "Night Repair Stack — sleep induction, tissue healing, and GH release overnight."
   },
   {
     "sku": "GH-CJC",
@@ -899,7 +899,7 @@
     "size": "5 mL",
     "total": "50mg",
     "price": 95.0,
-    "description": "GH releasing peptide stimulating GH secretion and promoting muscle anabolism."
+    "description": "GH releasing therapy stimulating GH secretion and promoting muscle anabolism."
   },
   {
     "sku": "GH-G6",
@@ -965,7 +965,7 @@
     "size": "5 mL",
     "total": "25mg/7.5mg",
     "price": 125.0,
-    "description": "Dual-peptide GH stack for synergistic hormone optimization."
+    "description": "Dual-therapy GH stack for synergistic hormone optimization."
   },
   {
     "sku": "GH-TCG",
@@ -998,7 +998,7 @@
     "size": "5 mL",
     "total": "10mg/25mg",
     "price": 105.0,
-    "description": "Immune Defense Stack pairing innate immunity peptide with thymosin."
+    "description": "Immune Defense Stack pairing innate immunity therapy with thymosin."
   },
   {
     "sku": "IM-TA1",
@@ -1009,7 +1009,7 @@
     "size": "5 mL",
     "total": "20mg",
     "price": 90.0,
-    "description": "Thymic immunomodulatory peptide boosting T-cell activity and immune surveillance."
+    "description": "Thymic immunomodulatory therapy boosting T-cell activity and immune surveillance."
   },
   {
     "sku": "IM-TLB",
@@ -1031,7 +1031,7 @@
     "size": "5 mL",
     "total": "10mg/10mg/10mg",
     "price": 105.0,
-    "description": "Neurogenesis Stack \u2014 synaptic plasticity, neuroprotection, and anxiolytic support."
+    "description": "Neurogenesis Stack — synaptic plasticity, neuroprotection, and anxiolytic support."
   },
   {
     "sku": "CM-SMS",
@@ -1042,7 +1042,7 @@
     "size": "5 mL",
     "total": "5mg/5mg",
     "price": 90.0,
-    "description": "Cognitive Enhancement Stack combining ACTH nootropic with anxiolytic neuropeptide."
+    "description": "Cognitive Enhancement Stack combining ACTH nootropic with anxiolytic neuro compound."
   },
   {
     "sku": "CM-PNN",
@@ -1053,7 +1053,7 @@
     "size": "10mL",
     "total": "40mg",
     "price": 75.0,
-    "description": "Intranasal tripeptide bioregulator for neuronal protection and circadian function."
+    "description": "Intranasal compound bioregulator for neuronal protection and circadian function."
   },
   {
     "sku": "CM-SLN",
@@ -1064,7 +1064,7 @@
     "size": "10mL",
     "total": "75mg",
     "price": 75.0,
-    "description": "Intranasal anxiolytic and nootropic peptide derived from tuftsin."
+    "description": "Intranasal anxiolytic and nootropic therapy derived from tuftsin."
   },
   {
     "sku": "CM-SMN",
@@ -1130,7 +1130,7 @@
     "size": "5 mL",
     "total": "5mg",
     "price": 70.0,
-    "description": "Hypothalamic neuropeptide stimulating GnRH for reproductive hormone balance."
+    "description": "Hypothalamic neuro compound stimulating GnRH for reproductive hormone balance."
   },
   {
     "sku": "HR-GND",
@@ -2582,7 +2582,7 @@
     "size": "5mL",
     "total": "1000mg",
     "price": 17.5,
-    "description": "Injectable testosterone ester with 1\u20132 week half-life for TRT dosing."
+    "description": "Injectable testosterone ester with 1–2 week half-life for TRT dosing."
   },
   {
     "sku": "HR-TEN-02",
@@ -2593,7 +2593,7 @@
     "size": "10mL",
     "total": "2000mg",
     "price": 17.5,
-    "description": "Injectable testosterone ester with 1\u20132 week half-life for TRT dosing."
+    "description": "Injectable testosterone ester with 1–2 week half-life for TRT dosing."
   },
   {
     "sku": "HR-TCA",
@@ -2791,7 +2791,7 @@
     "size": "5 mL",
     "total": "16.5mg/10mg/1000IU",
     "price": 108.0,
-    "description": "Libido and arousal stack combining melanocortin PT-141, hormone-stimulating Kisspeptin-10, and bonding peptide oxytocin."
+    "description": "Libido and arousal stack combining melanocortin PT-141, hormone-stimulating Kisspeptin-10, and bonding therapy oxytocin."
   },
   {
     "sku": "SK-EGC",
@@ -2802,7 +2802,7 @@
     "size": "5 mL",
     "total": "10mg/50mg",
     "price": 108.0,
-    "description": "Skin rejuvenation stack combining telomerase activator with copper peptide."
+    "description": "Skin rejuvenation stack combining telomerase activator with copper therapy."
   },
   {
     "sku": "SK-GHK",
@@ -2813,7 +2813,7 @@
     "size": "5 mL",
     "total": "50mg",
     "price": 80.0,
-    "description": "Copper tripeptide promoting collagen synthesis, wound healing, and skin regeneration."
+    "description": "Copper compound promoting collagen synthesis, wound healing, and skin regeneration."
   },
   {
     "sku": "SK-FIN",
@@ -2824,7 +2824,7 @@
     "size": "each",
     "total": "0.50mg",
     "price": 1.0,
-    "description": "5\u03b1-reductase inhibitor reducing DHT to treat androgenetic alopecia."
+    "description": "5α-reductase inhibitor reducing DHT to treat androgenetic alopecia."
   },
   {
     "sku": "SK-FIN-02",
@@ -2835,7 +2835,7 @@
     "size": "each",
     "total": "1mg",
     "price": 1.25,
-    "description": "5\u03b1-reductase inhibitor reducing DHT to treat androgenetic alopecia."
+    "description": "5α-reductase inhibitor reducing DHT to treat androgenetic alopecia."
   },
   {
     "sku": "SK-FMT",
@@ -3753,62 +3753,62 @@
   {
     "sku": "PS-MRS",
     "medication": "AOD-9604/MOTs-C - Metabolic Reset Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "1.2mg/2mg/mL",
     "size": "5mL",
     "total": "6mg/10mg",
     "price": 110.0,
-    "description": "Pre-formulated metabolic stack combining lipolytic and mitochondrial activating peptides."
+    "description": "Pre-formulated metabolic stack combining lipolytic and mitochondrial activating therapeutics."
   },
   {
     "sku": "PS-MRS-02",
     "medication": "AOD-9604/MOTs-C - Metabolic Reset Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "2.4mg/4mg/mL",
     "size": "5mL",
     "total": "12mg/20mg",
     "price": 120.0,
-    "description": "Pre-formulated metabolic stack combining lipolytic and mitochondrial activating peptides."
+    "description": "Pre-formulated metabolic stack combining lipolytic and mitochondrial activating therapeutics."
   },
   {
     "sku": "PS-VFR",
     "medication": "AOD-9604/MOTs-C/Tesamorelin - Visceral Fat Reduction Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "1.2mg/2mg/3mg/mL",
     "size": "5mL",
     "total": "6mg/10mg/15mg",
     "price": 110.0,
-    "description": "Triple-peptide visceral fat reduction stack targeting adipose tissue, metabolism, and GH."
+    "description": "Triple-therapy visceral fat reduction stack targeting adipose tissue, metabolism, and GH."
   },
   {
     "sku": "PS-VFR-02",
     "medication": "AOD-9604/MOTs-C/Tesamorelin - Visceral Fat Reduction Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "2.4mg/4mg/6mg/ml",
     "size": "5mL",
     "total": "12mg/20mg/30mg",
     "price": 125.0,
-    "description": "Triple-peptide visceral fat reduction stack targeting adipose tissue, metabolism, and GH."
+    "description": "Triple-therapy visceral fat reduction stack targeting adipose tissue, metabolism, and GH."
   },
   {
     "sku": "PS-WLV",
     "medication": "BPC-157/TB-500 - Wolverine Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "3mg/3mg/mL",
     "size": "5mL",
     "total": "15mg/15mg",
     "price": 110.0,
-    "description": "Classic dual-peptide recovery stack for accelerated musculoskeletal repair."
+    "description": "Classic dual-therapy recovery stack for accelerated musculoskeletal repair."
   },
   {
     "sku": "PS-WIC",
     "medication": "BPC-157/TB500/KPV - Wolverine Inflammation Control Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "3mg/3mg/3mg/mL",
     "size": "5mL",
@@ -3819,18 +3819,18 @@
   {
     "sku": "PS-AWV",
     "medication": "BPC-157/TB-500/KPV/GHK-Cu - Advanced Wolverine Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "3mg/3mg/3mg/10mg/mL",
     "size": "5mL",
     "total": "15mg/15mg/15mg/50mg",
     "price": 139.0,
-    "description": "Comprehensive regenerative stack with copper peptide for advanced tissue repair."
+    "description": "Comprehensive regenerative stack with copper therapy for advanced tissue repair."
   },
   {
     "sku": "PS-GOS",
     "medication": "CJC-1295/Ipamorelin - Growth Hormone Optimization Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "1.2mg/2mg/mL",
     "size": "5mL",
@@ -3841,7 +3841,7 @@
   {
     "sku": "PS-GOS-02",
     "medication": "CJC-1295/Ipamorelin - Growth Hormone Optimization Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "2mg/3mg/mL",
     "size": "5mL",
@@ -3852,7 +3852,7 @@
   {
     "sku": "PS-NRS",
     "medication": "DSIP/BPC-157/CJC-1295 -Night Repair Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "1mg/2mg/2mg/mL",
     "size": "5mL",
@@ -3863,18 +3863,18 @@
   {
     "sku": "PS-IDS",
     "medication": "LL-37/Thymosin Alpha-1 - Immune Defense Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "2mg/5mg/mL",
     "size": "5mL",
     "total": "10mg/25mg",
     "price": 120.0,
-    "description": "Dual-peptide immune stack for innate and adaptive immune enhancement."
+    "description": "Dual-therapy immune stack for innate and adaptive immune enhancement."
   },
   {
     "sku": "PS-NGS",
     "medication": "PE-22-28/Pinealon/Selank - Neurogenesis Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "2mg/2mg/2mg/mL",
     "size": "5mL",
@@ -3885,18 +3885,18 @@
   {
     "sku": "PS-CES",
     "medication": "Semax/Selank - Cognitive Enhancement Stack",
-    "category": "Peptide Stacks",
+    "category": "Therapy Stacks",
     "form": "Injectable",
     "strength": "1mg/1mg/mL",
     "size": "5mL",
     "total": "5mg/5mg",
     "price": 129.0,
-    "description": "Anxiolytic-nootropic dual-peptide stack for focus, calm, and brain optimization."
+    "description": "Anxiolytic-nootropic dual-therapy stack for focus, calm, and brain optimization."
   },
   {
     "sku": "PP-MT2",
     "medication": "Melanotan II (MT-2)",
-    "category": "Peptides",
+    "category": "therapeutics",
     "form": "Injectable",
     "strength": "10mg/mL",
     "size": "5mL",
@@ -3907,18 +3907,18 @@
   {
     "sku": "PP-LRS",
     "medication": "GHK-Cu/Epithalon - Longevity & Regeneration Stack",
-    "category": "Peptides",
+    "category": "therapeutics",
     "form": "Injectable",
     "strength": "10mg/2mg/mL",
     "size": "5mL",
     "total": "50mg/10mg",
     "price": 110.0,
-    "description": "Longevity stack combining copper peptide with telomerase activator."
+    "description": "Longevity stack combining copper therapy with telomerase activator."
   },
   {
     "sku": "PP-SYP",
     "medication": "Synapsin (Rg3/B12 Methyl/NAD)",
-    "category": "Peptides",
+    "category": "therapeutics",
     "form": "Nasal Spray",
     "strength": "2mg/2mg/50mg/mL",
     "size": "10mL",

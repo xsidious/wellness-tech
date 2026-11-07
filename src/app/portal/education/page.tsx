@@ -1,4 +1,9 @@
 import Link from "next/link";
+import {
+  EmptyState,
+  PageHeader,
+  SectionCard,
+} from "@/components/portal/Workspace";
 import { requireUser } from "@/lib/guard";
 import { photos } from "@/lib/photos";
 import { prisma } from "@/lib/prisma";
@@ -13,22 +18,48 @@ const covers: Record<string, string> = {
 export default async function EducationPage() {
   const user = await requireUser();
   const items = await prisma.contentItem.findMany({ orderBy: { title: "asc" } });
+
   return (
-    <>
-      <h1>Education</h1>
-      <div className="grid-2">
-        {items.map((item) => {
-          const locked = user.org.verificationTier < item.accessTier && !user.roles.includes("admin");
-          return (
-            <article className="card" key={item.id}>
-              <img className="card-photo" src={covers[item.slug] || photos.consult} alt="" />
-              <span className="kicker">{item.type}</span>
-              <b>{item.title}</b>
-              {locked ? <span>Unlocks at Tier {item.accessTier}.</span> : <Link href={`/portal/education/${item.slug}`}>Open</Link>}
-            </article>
-          );
-        })}
-      </div>
-    </>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Resources"
+        title="Education"
+        lede="Clinical protocols, catalogs, and practice materials gated by verification tier."
+      />
+
+      {!items.length ? (
+        <EmptyState title="No materials yet" body="Education content will appear here when published by Wellness Tech." />
+      ) : (
+        <div className="ws-catalog-grid">
+          {items.map((item) => {
+            const locked = user.org.verificationTier < item.accessTier && !user.roles.includes("admin");
+            return (
+              <article className="ws-product" key={item.id}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="ws-product-photo" src={covers[item.slug] || photos.consult} alt="" />
+                <div className="ws-product-body">
+                  <span className="ws-chip">{item.type}</span>
+                  <h3>{item.title}</h3>
+                  {locked ? (
+                    <p className="muted">Unlocks at Tier {item.accessTier}.</p>
+                  ) : (
+                    <Link className="btn btn-accent" href={`/portal/education/${item.slug}`}>
+                      Open
+                    </Link>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      <SectionCard title="Need help choosing protocols?">
+        <p className="muted">Your assigned rep can walk through contraindications, peptide catalogs, and pharmacy routing rules.</p>
+        <Link className="btn btn-ghost" href="/portal/messages">
+          Message your rep
+        </Link>
+      </SectionCard>
+    </div>
   );
 }

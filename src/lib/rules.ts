@@ -14,7 +14,25 @@ export function isProductClass(value: string): value is ProductClass {
   return (PRODUCT_CLASSES as readonly string[]).includes(value);
 }
 
-export function canOrder(tier: number, productClass: ProductClass, orderable = true) {
+/** 503A patient compounds and 503B Rx-class lines require a signed eScript before pharmacy forward. */
+export function requiresEscript(productClass: string, rxRequired = false) {
+  if (productClass === "503A") return true;
+  if (productClass === "503B" && rxRequired) return true;
+  return false;
+}
+
+/** Office-use / PUO SKUs can ship without a patient script. */
+export function isOfficeUseClass(productClass: string, officeUse = false) {
+  if (officeUse) return true;
+  return productClass === "device" || productClass === "supply" || productClass === "brand";
+}
+
+export function canOrder(
+  tier: number,
+  productClass: ProductClass,
+  orderable = true,
+  opts?: { hasVerifiedPrescriber?: boolean },
+) {
   if (productClass === "exosome") {
     return {
       ok: false,
@@ -29,6 +47,12 @@ export function canOrder(tier: number, productClass: ProductClass, orderable = t
   }
   if (!orderable) {
     return { ok: false, reason: "This SKU is not available to order." };
+  }
+  if ((productClass === "503A" || productClass === "503B") && opts?.hasVerifiedPrescriber === false) {
+    return {
+      ok: false,
+      reason: "A verified NPI credential is required before ordering 503A/503B compounds.",
+    };
   }
   if (productClass === "503B") {
     if (tier < 2) {
@@ -70,10 +94,10 @@ export function shippingCents(storages: string[]) {
 }
 
 export function routeSource(productClass: ProductClass) {
-  if (productClass === "503A") return "RxHere 503A";
+  if (productClass === "503A") return "503A compounding";
   if (productClass === "503B") return "Partner 503B";
   if (productClass === "brand") return "Licensed wholesaler";
-  if (productClass === "device" || productClass === "supply") return "RxHere stock";
+  if (productClass === "device" || productClass === "supply") return "Network stock";
   return "Held";
 }
 

@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const pin = await bcrypt.hash("246810", 8);
 const adminPassword = await bcrypt.hash("WellnessTech#Admin9!", 12);
+const practicePassword = await bcrypt.hash("Practice#Login9!", 12);
 
 async function ensureOrg(slug, data) {
   return prisma.organization.upsert({
@@ -23,7 +24,7 @@ async function ensureUser(email, data) {
         mfaEnabled: true,
         name: data.name,
         roles: data.roles,
-        ...(data.passwordHash ? { passwordHash: data.passwordHash } : {}),
+        passwordHash: data.passwordHash || existing.passwordHash,
       },
     });
     return existing;
@@ -44,11 +45,30 @@ const adminOrg = await ensureOrg("wellness-tech", {
   legalName: "Wellness Tech",
   verificationTier: 0,
 });
+const salesOrg = await ensureOrg("sales-demo", {
+  type: "affiliate",
+  legalName: "Sales Demo Affiliate",
+  verificationTier: 0,
+  assignedRep: "Alex Morgan",
+});
 
 await ensureUser("owner@fairfax.demo", {
   orgId: fairfax.id,
   name: "Dana Ellis",
   roles: JSON.stringify(["owner", "prescriber"]),
+  passwordHash: practicePassword,
+});
+await ensureUser("billing@fairfax.demo", {
+  orgId: fairfax.id,
+  name: "Jordan Lee",
+  roles: JSON.stringify(["billing"]),
+  passwordHash: practicePassword,
+});
+await ensureUser("affiliate@sales.demo", {
+  orgId: salesOrg.id,
+  name: "Riley Chen",
+  roles: JSON.stringify(["affiliate"]),
+  passwordHash: practicePassword,
 });
 await ensureUser("admin@wellnesstech.demo", {
   orgId: adminOrg.id,
@@ -66,11 +86,16 @@ console.log(
           email: "admin@wellnesstech.demo",
           password: "WellnessTech#Admin9!",
           portal: "/admin/login",
-          note: "Dedicated staff admin password login",
         },
-        { email: "owner@fairfax.demo", pin: "246810", portal: "/login" },
-        { email: "billing@fairfax.demo", pin: "246810", portal: "/login" },
-        { email: "affiliate@sales.demo", pin: "246810", portal: "/login" },
+        {
+          email: "owner@fairfax.demo",
+          password: "Practice#Login9!",
+          pin: "246810",
+          portal: "/login",
+          note: "Password then 6-digit PIN (MFA)",
+        },
+        { email: "billing@fairfax.demo", password: "Practice#Login9!", pin: "246810", portal: "/login" },
+        { email: "affiliate@sales.demo", password: "Practice#Login9!", pin: "246810", portal: "/login" },
       ],
     },
     null,

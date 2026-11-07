@@ -1,68 +1,124 @@
 import type { Metadata } from "next";
+
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
+
+
 export const metadata: Metadata = buildSeoMetadata({
+
   title: "Therapies and Formulary",
-  description: "RxHere 503A formulary for licensed practices. Peptides, GLP-1s, anti-aging, and more. Pricing on request.",
+
+  description:
+
+    "503A formulary for licensed practices. GLP-1s, anti-aging, and more. Practice retail from the formulary price list.",
+
   canonicalPath: "/products",
+
 });
 
+
+
 import Link from "next/link";
+
 import { MarketingShell } from "@/components/MarketingShell";
+
 import { PageBanner } from "@/components/PageBanner";
+
 import { photos } from "@/lib/photos";
+
 import { loadPublicFormulary } from "@/lib/formulary-public";
 
+import { money } from "@/lib/money";
+
+
+
 export default function ProductsPage() {
+
   const lines = loadPublicFormulary();
+
   const groups = new Map<string, typeof lines>();
+
   for (const line of lines) {
-    const bucket = groups.get(line.category) || [];
+    const category = String(line.category || "")
+      .replace(/\bPeptide Stacks\b/gi, "Therapy Stacks")
+      .replace(/\bPeptides\b/gi, "Therapeutics")
+      .replace(/\bPeptide\b/gi, "Therapy");
+    const bucket = groups.get(category) || [];
     bucket.push(line);
-    groups.set(line.category, bucket);
+    groups.set(category, bucket);
   }
+
   return (
     <MarketingShell>
       <PageBanner
         kicker="Therapies"
-        title="RxHere 503A formulary for licensed practices."
-        lede="Full catalog below. Pricing is available upon request for verified practices. Patient-specific compounded lines require a prescription."
+        title="503A formulary for licensed practices."
+        lede="Full catalog below. Prices shown are practice retail from the formulary price list. Patient-specific compounded lines require a prescription."
         image={photos.weight}
       >
         <Link className="btn btn-accent" href="/signup">Get practice access</Link>
       </PageBanner>
       <section className="wrap section stack">
-        <p className="note" style={{ margin: 0 }}>
-          Pricing available upon request — contact Wellness Tech after practice verification.
-        </p>
         {[...groups.entries()].map(([category, items]) => (
           <div className="stack" key={category}>
             <h2 style={{ margin: 0 }}>{category}</h2>
+
             <p className="muted" style={{ margin: 0 }}>{items.length} SKUs · 503A compounded</p>
+
             <div className="table-wrap">
+
               <table className="table">
+
                 <thead>
-                  <tr><th>SKU</th><th>Medication</th><th>Strength</th><th>Size</th><th>Form</th></tr>
+
+                  <tr><th>SKU</th><th>Medication</th><th>Strength</th><th>Size</th><th>Form</th><th>Price</th></tr>
+
                 </thead>
+
                 <tbody>
+
                   {items.map((item) => (
+
                     <tr key={item.sku}>
+
                       <td>{item.sku}</td>
+
                       <td>{item.medication}</td>
+
                       <td>{item.strength}</td>
+
                       <td>{item.size}</td>
+
                       <td>{item.form}</td>
+
+                      <td>{item.priceCents ? money(item.priceCents) : "—"}</td>
+
                     </tr>
+
                   ))}
+
                 </tbody>
+
               </table>
+
             </div>
+
           </div>
+
         ))}
+
         {!lines.length ? (
-          <p className="note">Formulary file is not present yet. Run the RxHere sync from admin after deploy.</p>
+
+          <p className="note">Formulary file is not present yet. Run formulary sync from admin after deploy.</p>
+
         ) : null}
+
       </section>
+
     </MarketingShell>
+
   );
+
 }
+
+

@@ -123,11 +123,12 @@ export async function emitOrderEvent(orderId: string, type: string, reason?: str
 export async function openRxcoreOrder(input: {
   orderId: string;
   lines: { productClass: ProductClass; patientInitials: string }[];
-  /** When set, 503A lines are submitted to the RxHere Partner API. */
+  /** When set, 503A lines are submitted to Eventide (VitaRelay Practice API). */
   prescription?: {
     patient: RxHerePatient;
     prescriber?: RxHerePrescriber;
     shippingMethod?: "2_DAY" | "OVERNIGHT";
+    platformProductIdBySku?: Record<string, string>;
   };
 }) {
   const order = await prisma.order.findUnique({ where: { id: input.orderId }, include: { lines: true } });
@@ -147,6 +148,7 @@ export async function openRxcoreOrder(input: {
       shippingMethod: input.prescription.shippingMethod || (order.shippingMethod as "2_DAY" | "OVERNIGHT") || "2_DAY",
       items: rxLines.map((line) => ({
         sku: line.sku,
+        platformProductId: input.prescription?.platformProductIdBySku?.[line.sku],
         name: line.name,
         strength: line.strength || undefined,
         size: line.size || undefined,
@@ -171,9 +173,10 @@ export async function openRxcoreOrder(input: {
         rxhereOrderId: placed.orderId,
         rxhereBatchId: placed.batchId || "",
         status: "submitted",
+        splitMessage: "",
       },
     });
-    await audit({ action: "rxhere.order_opened", object: order.id, after: placed.orderId });
+    await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
     await emitOrderEvent(order.id, "order.received");
     return placed.orderId;
   }
@@ -183,6 +186,86 @@ export async function openRxcoreOrder(input: {
   await audit({ action: "rxcore.order_opened", object: order.id, after: rxcoreOrderId });
   await emitOrderEvent(order.id, "order.received");
   return rxcoreOrderId;
+}
+
+/**
+ * Re-submit an on-hold / missing-RxHere order to the Partner logistics API.
+ * Used when RxHere was temporarily unavailable (e.g. Cloudflare 502) after KIAN already created the WT order.
+ */
+export async function retryRxHereSubmission(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
+  if (!order) return { ok: false as const, error: "Order not found." };
+  if (order.rxhereOrderId?.trim()) {
+    return { ok: true as const, orderId: order.rxhereOrderId, duplicate: true as const };
+  }
+  if (!rxhereConfigured()) {
+    return { ok: false as const, error: "EVENTIDE_API_KEY / RXHERE_API_TOKEN is not configured." };
+  }
+
+  let patient: RxHerePatient | null = null;
+  try {
+    patient = order.patientJson ? (JSON.parse(order.patientJson) as RxHerePatient) : null;
+  } catch {
+    patient = null;
+  }
+  if (!patient?.firstName || !patient?.address?.line1) {
+    return { ok: false as const, error: "Order is missing patient details needed for RxHere." };
+  }
+
+  let prescriber: RxHerePrescriber | undefined;
+  try {
+    const parsed = order.prescriberJson ? (JSON.parse(order.prescriberJson) as RxHerePrescriber) : undefined;
+    if (parsed && (parsed.npiNumber || parsed.lastName || parsed.firstName)) prescriber = parsed;
+  } catch {
+    prescriber = undefined;
+  }
+
+  const products = await prisma.product.findMany({
+    where: { sku: { in: order.lines.map((line) => line.sku) } },
+    select: { sku: true, rxcoreFormularyId: true },
+  });
+  const formularyBySku = new Map(products.map((product) => [product.sku, product.rxcoreFormularyId]));
+  const platformProductIdBySku = Object.fromEntries(
+    order.lines
+      .map((line) => {
+        const sku = line.sku?.trim() || "";
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sku)) {
+          return [sku, sku] as const;
+        }
+        const formularyId = formularyBySku.get(sku)?.trim() || "";
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(formularyId)) {
+          return [sku, formularyId] as const;
+        }
+        return null;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry)),
+  );
+
+  try {
+    const rxhereOrderId = await openRxcoreOrder({
+      orderId: order.id,
+      lines: order.lines
+        .filter((line) => isProductClass(line.productClass))
+        .map((line) => ({
+          productClass: line.productClass as ProductClass,
+          patientInitials: line.patientInitials,
+        })),
+      prescription: {
+        patient,
+        prescriber,
+        shippingMethod: order.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
+        platformProductIdBySku,
+      },
+    });
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { splitMessage: "", status: "submitted" },
+    });
+    return { ok: true as const, orderId: rxhereOrderId, duplicate: false as const };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "RxHere resubmit failed.";
+    return { ok: false as const, error: message };
+  }
 }
 
 export async function createExternalOrder(input: { orgId: string; userId: string; sku: string; qty: number; source: string }) {

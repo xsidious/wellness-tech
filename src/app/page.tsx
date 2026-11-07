@@ -3,7 +3,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "503A and 503B Therapies for Licensed Practices",
-  description: "Compounded peptides, GLP-1s, exosomes, and clinical supplies for licensed practices - one account, one cart, RxHere fulfillment.",
+  description: "Compounded GLP-1s, exosomes, and clinical supplies for licensed practices - one account, one cart, pharmacy fulfillment.",
   canonicalPath: "/",
 });
 
@@ -13,11 +13,10 @@ import { photos } from "@/lib/photos";
 
 const categories = [
   ["GLP-1 and weight", "Injectable and sublingual weight-management formulations.", photos.weight, "/products"],
-  ["Peptides", "Practice catalog titles, reviewed before they reach a cart.", photos.peptides, "/products"],
   ["Celexo and Lumidor", "Celexo is topical. Lumidor is an exosome-infused topical for licensed aesthetic practices.", photos.exosomes, "/exosomes"],
   ["Anti-aging", "NAD+ and longevity categories for licensed practices.", photos.consult, "/products"],
   ["Performance", "Recovery and sports medicine categories.", photos.supplies, "/products"],
-  ["Aesthetic equipment", "Devices, ancillaries, and medical supplies.", photos.equipment, "/supplies"],
+  ["Aesthetic equipment", "Celexo PRO 4-in-1 platform and clinical supplies.", photos.celexoPro, "/supplies"],
 ];
 
 export default function HomePage({ searchParams }: { searchParams: Promise<{ ref?: string }> }) {
@@ -32,14 +31,14 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
         <div className="stack hero-copy">
           <span className="pill">For licensed practitioners only</span>
           <h1>Compounded therapies and aesthetics, sourced for your practice.</h1>
-          <p className="lede">Peptides, GLP-1s, Celexo and Lumidor exosomes, and clinical equipment from verified 503A/503B partners, with one login, one cart, and one invoice.</p>
+          <p className="lede">GLP-1s, Celexo and Lumidor exosomes, and clinical equipment from verified 503A/503B partners, with one login, one cart, and one invoice.</p>
           <div className="row" style={{ flexWrap: "wrap" }}>
             <Link className="btn btn-accent" href={`/signup?type=practice${ref ? `&ref=${ref}` : ""}`}>Become a prescriber</Link>
             <Link className="btn btn-ghost" href="/products">Browse therapies</Link>
           </div>
           <div className="stats">
             <div><strong>One cart</strong><span>Every product class</span></div>
-            <div><strong>503A/B</strong><span>Routed by RxHere</span></div>
+            <div><strong>503A/B</strong><span>Licensed pharmacy network</span></div>
             <div><strong>Rx only</strong><span>Tiered access</span></div>
             <div><strong>B2B</strong><span>Practice-first</span></div>
           </div>
@@ -57,7 +56,11 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
         <div className="grid-3">
           {categories.map(([title, copy, image, href]) => (
             <Link className="card" href={href} key={title}>
-              <img className="card-photo" src={image} alt="" />
+              <img
+                className={title === "Aesthetic equipment" ? "card-photo card-photo-contain" : "card-photo"}
+                src={image}
+                alt=""
+              />
               <b>{title}</b>
               <span>{copy}</span>
             </Link>
@@ -79,12 +82,12 @@ async function Home({ searchParams }: { searchParams: Promise<{ ref?: string }> 
           <h2>From credentialing to fulfillment, without the manual handoff.</h2>
           <div className="grid-3">
             {[
-              ["01", "Credential", "Sign up, confirm your NPI, and reach Tier 1 when the registry matches."],
-              ["02", "Match", "RxCore routes each line by class, state, stock, and BUD."],
-              ["03", "Prescribe", "You sign the prescription. Staff can draft, not sign."],
-              ["04", "Fulfill", "RxHere dispenses or sources the line and sends live status back."],
-            ].map(([n, title, copy]) => (
-              <div className="dark-card stack" key={n}><span>{n}</span><b>{title}</b><span>{copy}</span></div>
+              ["Credential", "Sign up, confirm your NPI, and reach Tier 1 when the registry matches."],
+              ["Match", "RxCore routes each line by class, state, stock, and BUD."],
+              ["Prescribe", "You sign the prescription. Staff can draft, not sign."],
+              ["Fulfill", "Our compounding partner dispenses or sources the line and sends live status back."],
+            ].map(([title, copy]) => (
+              <div className="dark-card stack" key={title}><b>{title}</b><span>{copy}</span></div>
             ))}
           </div>
         </div>

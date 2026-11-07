@@ -1,4 +1,4 @@
-﻿node_modules
+node_modules
 .next
 prisma/dev.db
 prisma/dev.db-journal
@@ -9,3 +9,8 @@ tsconfig.tsbuildinfo
 scripts/_tmp-*
 .vercel
 .env*.local
+
+.wt-*
+_deploy*.out
+_deploy*.err
+

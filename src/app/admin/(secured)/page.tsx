@@ -1,184 +1,181 @@
 import Link from "next/link";
+import {
+  PageHeader,
+  QuickLink,
+  SectionCard,
+  StatTile,
+  StatusBadge,
+  statusTone,
+} from "@/components/portal/Workspace";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminHome() {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [
-    orgs,
-    products,
-    users,
-    orders,
-    patients,
-    prescribers,
+    practices,
+    openOrders,
+    paidAgg,
     affiliates,
-    openRefills,
+    pharmacies,
+    commissionsAgg,
     recentOrders,
-    recentPatients,
+    dueRefills,
   ] = await Promise.all([
-    prisma.organization.count(),
-    prisma.product.count({ where: { active: true } }),
-    prisma.user.count(),
-    prisma.order.count(),
-    prisma.clinicalPatient.count(),
-    prisma.prescriberCredential.count(),
+    prisma.organization.count({ where: { status: "active" } }),
+    prisma.order.count({ where: { status: { not: "delivered" } } }),
+    prisma.order.aggregate({
+      where: { paymentStatus: "paid", createdAt: { gte: since } },
+      _sum: { totalCents: true },
+      _count: true,
+    }),
     prisma.affiliateProfile.count(),
-    prisma.refill.count({ where: { status: "due" } }),
+    prisma.pharmacy.count().catch(() => 0),
+    prisma.commission.aggregate({ _sum: { amountCents: true }, where: { status: "pending_batch" } }),
     prisma.order.findMany({
       orderBy: { createdAt: "desc" },
       take: 8,
-      include: { org: true, clinicalPatient: true },
+      include: { org: true, clinicalPatient: true, pharmacy: true },
     }),
-    prisma.clinicalPatient.findMany({ orderBy: { updatedAt: "desc" }, take: 6 }),
+    prisma.refill.count({ where: { status: "due" } }),
   ]);
 
-  const modules = [
-    { href: "/admin/orders", label: "Orders", desc: "All partner + portal invoices and Rx charts" },
-    { href: "/admin/patients", label: "Patients", desc: "Clinical charts mirrored from KIAN" },
-    { href: "/admin/practices", label: "Practices", desc: "Partner clinics, tiers, and status" },
-    { href: "/admin/prescribers", label: "Prescribers", desc: "NPIs and credentialed clinicians" },
-    { href: "/admin/affiliates", label: "Affiliates", desc: "Referral partners and commissions" },
-    { href: "/admin/products", label: "Catalog", desc: "RxHere formulary at 2× partner pricing" },
-    { href: "/admin/refills", label: "Refills", desc: "Due and scheduled refill queue" },
-    { href: "/admin/messages", label: "Messages", desc: "Practice ↔ rep inbox" },
-    { href: "/admin/audit", label: "Audit", desc: "Immutable ops trail" },
-  ];
+  const dayBuckets = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - (13 - i));
+    return d;
+  });
+  const recentVolume = await prisma.order.findMany({
+    where: { createdAt: { gte: dayBuckets[0] } },
+    select: { createdAt: true, totalCents: true },
+  });
+  const volumeByDay = dayBuckets.map((day) => {
+    const next = new Date(day);
+    next.setDate(next.getDate() + 1);
+    const rows = recentVolume.filter((o) => o.createdAt >= day && o.createdAt < next);
+    return { label: day.toLocaleDateString(undefined, { month: "short", day: "numeric" }), count: rows.length };
+  });
+  const maxVol = Math.max(1, ...volumeByDay.map((d) => d.count));
 
   return (
-    <div className="stack">
-      <div className="dash-head">
-        <div>
-          <span className="kicker">Admin console</span>
-          <h1>Wellness Tech operations</h1>
-          <p className="lede">
-            Run the network end-to-end: practices, prescribers, patients, prescriptions, catalog, and fulfillment.
-          </p>
-        </div>
-        <div className="quick">
-          <Link className="btn btn-accent" href="/admin/orders">
-            Open orders
-          </Link>
-          <Link className="btn btn-ghost" href="/admin/products">
-            Sync formulary
-          </Link>
-        </div>
-      </div>
-
-      <div className="stat-grid">
-        <div className="stat">
-          <span>Practices</span>
-          <b>{orgs}</b>
-        </div>
-        <div className="stat">
-          <span>People</span>
-          <b>{users}</b>
-        </div>
-        <div className="stat">
-          <span>Prescribers</span>
-          <b>{prescribers}</b>
-        </div>
-        <div className="stat">
-          <span>Patients</span>
-          <b>{patients}</b>
-        </div>
-        <div className="stat">
-          <span>Orders</span>
-          <b>{orders}</b>
-        </div>
-        <div className="stat">
-          <span>SKUs</span>
-          <b>{products}</b>
-        </div>
-        <div className="stat">
-          <span>Affiliates</span>
-          <b>{affiliates}</b>
-        </div>
-        <div className="stat">
-          <span>Refills due</span>
-          <b>{openRefills}</b>
-        </div>
-      </div>
-
-      <div className="grid-2">
-        {modules.map((mod) => (
-          <Link key={mod.href} href={mod.href} className="card">
-            <span className="kicker">{mod.label}</span>
-            <b>{mod.label}</b>
-            <span className="muted">{mod.desc}</span>
-          </Link>
-        ))}
-      </div>
-
-      <div className="grid-2">
-        <section className="panel">
-          <h2>Recent orders</h2>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Invoice</th>
-                  <th>Practice / patient</th>
-                  <th>Status</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td>
-                      <Link href={`/admin/orders/${order.id}`}>{order.invoiceNumber}</Link>
-                    </td>
-                    <td>
-                      {order.org.legalName}
-                      {order.clinicalPatient ? (
-                        <div className="muted">{order.clinicalPatient.fullName}</div>
-                      ) : null}
-                    </td>
-                    <td>{order.status}</td>
-                    <td>{money(order.totalCents)}</td>
-                  </tr>
-                ))}
-                {!recentOrders.length ? (
-                  <tr>
-                    <td colSpan={4}>No orders yet.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+    <div className="ws-stack">
+      <PageHeader
+        kicker="Workspace"
+        title="Operations dashboard"
+        lede="VitaRelay-style control plane: practices, pharmacies, affiliates, settlements, and fulfillment in one workspace."
+        actions={
+          <div className="ws-head-actions">
+            <Link className="btn btn-ghost" href="/admin/settlements">
+              Settlements
+            </Link>
+            <Link className="btn btn-accent" href="/admin/orders">
+              Open orders
+            </Link>
           </div>
-        </section>
+        }
+      />
 
-        <section className="panel">
-          <h2>Recent patients</h2>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Source</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentPatients.map((patient) => (
-                  <tr key={patient.id}>
-                    <td>
-                      <Link href={`/admin/patients/${patient.id}`}>{patient.fullName}</Link>
-                      <div className="muted">{patient.email}</div>
-                    </td>
-                    <td>{patient.sourceSite}</td>
-                    <td>{patient.intakeStatus || "—"}</td>
-                  </tr>
-                ))}
-                {!recentPatients.length ? (
-                  <tr>
-                    <td colSpan={3}>Charts appear when KIAN forwards paid therapy orders.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <div className="ws-stat-grid">
+        <StatTile label="Open orders" value={openOrders} tone="accent" hint="Awaiting fulfillment" />
+        <StatTile
+          label="Revenue (30d)"
+          value={money(paidAgg._sum.totalCents || 0)}
+          hint={`${paidAgg._count} paid invoices`}
+        />
+        <StatTile label="Active practices" value={practices} tone="ok" />
+        <StatTile
+          label="Commissions due"
+          value={money(commissionsAgg._sum.amountCents || 0)}
+          tone="warn"
+          hint={`${affiliates} affiliates · ${pharmacies} pharmacies`}
+        />
       </div>
+
+      <div className="ws-split">
+        <SectionCard title="Order volume" description="Last 14 days">
+          <div className="ws-bars" aria-hidden>
+            {volumeByDay.map((d) => (
+              <div key={d.label} className="ws-bar-col" title={`${d.label}: ${d.count}`}>
+                <div className="ws-bar" style={{ height: `${Math.max(8, (d.count / maxVol) * 100)}%` }} />
+                <span>{d.label.split(" ")[1] || d.label}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Operate the network">
+          <div className="ws-quick-grid">
+            <QuickLink href="/admin/practices" title="Practices" body="Onboarding, tiers, locations" />
+            <QuickLink href="/admin/pharmacies" title="Pharmacies" body="503A / 503B network partners" />
+            <QuickLink href="/admin/affiliates" title="Affiliates" body="Rep codes and attribution" />
+            <QuickLink href="/admin/settlements" title="Settlements" body="Period close and payables" />
+            <QuickLink href="/admin/reports" title="Reports" body="Spend, SLA, payouts" />
+            <QuickLink href="/admin/refills" title="Refills" body={`${dueRefills} due now`} />
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard
+        title="Recent orders"
+        description="Partner + portal invoices with pharmacy and eScript status."
+        action={
+          <Link href="/admin/orders" className="ws-text-link">
+            View all
+          </Link>
+        }
+      >
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Invoice</th>
+                <th>Practice</th>
+                <th>Status</th>
+                <th>Payment</th>
+                <th>eScript</th>
+                <th>Pharmacy</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentOrders.map((order) => (
+                <tr key={order.id}>
+                  <td>
+                    <Link href={`/admin/orders/${order.id}`}>
+                      <b>{order.invoiceNumber}</b>
+                    </Link>
+                    {order.clinicalPatient ? (
+                      <div className="muted">{order.clinicalPatient.fullName}</div>
+                    ) : null}
+                  </td>
+                  <td>{order.org.legalName}</td>
+                  <td>
+                    <StatusBadge tone={statusTone(order.status)}>{order.status}</StatusBadge>
+                  </td>
+                  <td>
+                    <StatusBadge tone={statusTone(order.paymentStatus)}>{order.paymentStatus}</StatusBadge>
+                  </td>
+                  <td>
+                    <StatusBadge tone={statusTone(order.escriptStatus || "not_required")}>
+                      {order.escriptStatus || "n/a"}
+                    </StatusBadge>
+                  </td>
+                  <td className="muted">{order.pharmacy?.name || order.rxhereOrderId || "—"}</td>
+                  <td>{money(order.totalCents)}</td>
+                </tr>
+              ))}
+              {!recentOrders.length ? (
+                <tr>
+                  <td colSpan={7} className="muted">
+                    No orders yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
     </div>
   );
 }

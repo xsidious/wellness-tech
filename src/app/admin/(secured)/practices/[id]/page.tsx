@@ -13,6 +13,7 @@ export default async function AdminPracticeDetail({ params }: { params: Promise<
       users: { include: { credential: true, affiliate: true }, orderBy: { createdAt: "asc" } },
       orders: { orderBy: { createdAt: "desc" }, take: 20, include: { clinicalPatient: true } },
       clinicalPatients: { orderBy: { updatedAt: "desc" }, take: 20 },
+      locations: true,
       apiKeys: true,
     },
   });
@@ -28,7 +29,9 @@ export default async function AdminPracticeDetail({ params }: { params: Promise<
           </p>
           <h1>{org.legalName}</h1>
           <p className="muted">
-            {org.type} · {tierLabel(org.verificationTier)} · {org.status}
+            {org.type} · {tierLabel(org.verificationTier)} · {org.status} · onboarding{" "}
+            {org.onboardingComplete ? "complete" : "pending"}
+            {org.referringAffiliateId ? " · affiliate attributed" : ""}
           </p>
         </div>
       </div>
@@ -61,6 +64,19 @@ export default async function AdminPracticeDetail({ params }: { params: Promise<
             Save practice
           </button>
         </form>
+      </section>
+
+      <section className="panel">
+        <h2>Locations</h2>
+        <ul>
+          {org.locations.map((loc) => (
+            <li key={loc.id}>
+              <b>{loc.label}</b>
+              {loc.isDefault ? " · default" : ""} — {[loc.street1, loc.city, loc.state, loc.zip].filter(Boolean).join(", ") || "No address"}
+            </li>
+          ))}
+          {!org.locations.length ? <li className="muted">No practice locations yet.</li> : null}
+        </ul>
       </section>
 
       <section className="panel">

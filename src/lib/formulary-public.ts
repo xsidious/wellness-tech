@@ -1,6 +1,8 @@
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
+import { partnerPriceCentsFromFormulary } from "@/lib/formulary-pricing";
+
 export type PublicFormularyRow = {
   sku: string;
   medication: string;
@@ -8,6 +10,7 @@ export type PublicFormularyRow = {
   form: string;
   strength: string;
   size: string;
+  /** Practice retail (formulary list price × markup), in cents. */
   priceCents: number;
 };
 
@@ -44,7 +47,7 @@ export function loadPublicFormulary(): PublicFormularyRow[] {
         form: row.form || "",
         strength: row.strength || "",
         size: row.size || "",
-        priceCents: Math.round(Number(row.price || 0) * 100) || 0,
+        priceCents: partnerPriceCentsFromFormulary(row.price),
       };
     })
     .filter(Boolean) as PublicFormularyRow[];

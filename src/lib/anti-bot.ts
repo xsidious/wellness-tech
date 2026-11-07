@@ -40,19 +40,34 @@ export function securityHeaders(res: Response) {
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   res.headers.set("X-XSS-Protection", "1; mode=block");
+  res.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  res.headers.set("Cross-Origin-Resource-Policy", "same-site");
+  if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
+    res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  }
   if (!res.headers.has("Content-Security-Policy")) {
     res.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https:;",
+      "default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
     );
   }
   return res;
 }
 
+function isProdRuntime() {
+  return process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+}
+
 export async function verifyTurnstile(token: string, ip?: string) {
-  const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret) return { ok: true as const, skipped: true };
-  if (!token) return { ok: false as const, error: "Bot check failed." };
+  const secret = (process.env.TURNSTILE_SECRET_KEY || "").trim();
+  // Production fail-closed: never skip bot checks when keys should be present.
+  if (!secret) {
+    if (isProdRuntime()) {
+      return { ok: false as const, error: "Bot protection is not configured." };
+    }
+    return { ok: true as const, skipped: true };
+  }
+  if (!token) return { ok: false as const, error: "Complete the security check and try again." };
   try {
     const body = new URLSearchParams({
       secret,
@@ -63,9 +78,12 @@ export async function verifyTurnstile(token: string, ip?: string) {
       method: "POST",
       body,
     });
-    const data = (await res.json()) as { success?: boolean };
-    return data.success ? { ok: true as const } : { ok: false as const, error: "Bot check failed." };
+    const data = (await res.json()) as { success?: boolean; "error-codes"?: string[] };
+    if (!data.success) {
+      return { ok: false as const, error: "Security check failed. Refresh and try again." };
+    }
+    return { ok: true as const };
   } catch {
-    return { ok: false as const, error: "Bot check unavailable." };
+    return { ok: false as const, error: "Security check unavailable. Try again shortly." };
   }
 }

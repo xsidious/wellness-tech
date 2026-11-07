@@ -24,16 +24,18 @@ npx tsx scripts/sync-formulary.ts
 
 Set `RXHERE_API_BASE_URL`, `RXHERE_API_TOKEN`, `RXHERE_WEBHOOK_SECRET`, `WT_PARTNER_ORDER_SECRET`, and optionally `KIAN_STATUS_WEBHOOK_URL`. Do not commit tokens.
 
-## Sandbox sign-in
+## Practice sign-in (live)
 
-The one-time code is shown on the sign-in screen because `SANDBOX_AUTH=true`. Then enter the second factor.
+Practice / affiliate users sign in at `/login` with **email + password**, then a **6-digit PIN** when MFA is enabled. Staff admins use `/admin/login`.
 
-| Email | PIN | Role |
-| --- | --- | --- |
-| owner@fairfax.demo | 246810 | Practice owner and prescriber, Tier 2 |
-| billing@fairfax.demo | 246810 | Billing, no patient page |
-| affiliate@sales.demo | 246810 | Affiliate code `FAIRFAX` |
-| admin@wellnesstech.demo | 246810 | Catalog admin |
+Set Cloudflare Turnstile keys (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`) for bot protection.
+
+| Email | Password | PIN | Role |
+| --- | --- | --- | --- |
+| owner@fairfax.demo | Practice#Login9! | 246810 | Practice owner and prescriber, Tier 2 |
+| billing@fairfax.demo | Practice#Login9! | 246810 | Billing, no patient page |
+| affiliate@sales.demo | Practice#Login9! | 246810 | Affiliate code `FAIRFAX` |
+| admin@wellnesstech.demo | WellnessTech#Admin9! | — | Catalog admin (`/admin/login`) |
 
 Sandbox NPI for a new prescriber: `1000000001`. A real 10-digit NPI is looked up in the public NPI registry.
 

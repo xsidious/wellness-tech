@@ -1,22 +1,39 @@
 import { cookies } from "next/headers";
+import { randomBytes } from "crypto";
 import { readSession, signSession } from "@/lib/crypto";
 
 const SESSION = "wt_session";
 const PENDING = "wt_pending";
 
+function cookieBase(maxAge: number) {
+  const secure = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure,
+    path: "/",
+    maxAge,
+  };
+}
+
+/** 4-hour absolute session; refreshed only by signing in again. */
+const SESSION_MS = 1000 * 60 * 60 * 4;
+const PENDING_MS = 1000 * 60 * 15;
+
 export async function setLogin(userId: string) {
-  const exp = Date.now() + 1000 * 60 * 60 * 12;
-  const token = signSession(`${userId}|${exp}`);
+  const exp = Date.now() + SESSION_MS;
+  const sid = randomBytes(16).toString("hex");
+  const token = signSession(`${userId}|${exp}|${sid}`);
   const jar = await cookies();
-  jar.set(SESSION, token, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 12 });
+  jar.set(SESSION, token, cookieBase(Math.floor(SESSION_MS / 1000)));
   jar.delete(PENDING);
 }
 
 export async function setPending(email: string) {
-  const exp = Date.now() + 1000 * 60 * 20;
+  const exp = Date.now() + PENDING_MS;
   const token = signSession(`${email}|${exp}|pending`);
   const jar = await cookies();
-  jar.set(PENDING, token, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 20 });
+  jar.set(PENDING, token, cookieBase(Math.floor(PENDING_MS / 1000)));
 }
 
 export async function readPending() {

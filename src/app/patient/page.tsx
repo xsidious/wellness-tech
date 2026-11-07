@@ -26,6 +26,14 @@ export default async function PatientPage({ searchParams }: { searchParams: Prom
       <section className="wrap section stack" style={{ maxWidth: 760 }}>
         <span className="kicker">Patient app</span>
         <h1>Hi. This view is for {initials}.</h1>
+        {user?.clinicalPatientId ? (
+          <p>
+            You have an invite-only portal.{" "}
+            <a className="btn btn-accent" href="/patient/portal">
+              Open patient portal
+            </a>
+          </p>
+        ) : null}
         {order ? (
           <>
             <p>Invoice {order.invoiceNumber} · {order.status}. Cold-chain packages should be refrigerated on arrival.</p>
@@ -39,7 +47,7 @@ export default async function PatientPage({ searchParams }: { searchParams: Prom
           </>
         ) : (
           <>
-            <p>Sample tracking for a practice-branded order. Live invoices open only for that practice.</p>
+            <p>Invite-only access: your practice invites you after intake. Guests see sample tracking below.</p>
             <div className="timeline">
               {STEPS.map((step) => <span key={step} className={step === "shipped" || step === "received" || step === "verified" || step === "compounding" ? "on" : ""}>{step}</span>)}
             </div>
