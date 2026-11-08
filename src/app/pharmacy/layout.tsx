@@ -8,5 +8,9 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
   if (!roles.includes("pharmacy") && !roles.includes("admin")) {
     redirect("/portal");
   }
-  return <PortalFrame user={user}>{children}</PortalFrame>;
+  return (
+    <PortalFrame user={user} workspace="pharmacy">
+      {children}
+    </PortalFrame>
+  );
 }

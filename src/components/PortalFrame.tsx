@@ -54,7 +54,7 @@ const adminGroups: PortalNavGroup[] = [
       { href: "/admin/prescriptions", label: "Prescriptions" },
       { href: "/admin/practices", label: "Practices" },
       { href: "/admin/pharmacies", label: "Pharmacies" },
-      { href: "/pharmacy", label: "Pharmacy queue" },
+      { href: "/pharmacy", label: "Pharmacy workspace" },
     ],
   },
   {
@@ -89,9 +89,18 @@ const pharmacyGroups: PortalNavGroup[] = [
   {
     label: "Fulfillment",
     links: [
-      { href: "/pharmacy", label: "Queue", exact: true },
+      { href: "/pharmacy", label: "Overview", exact: true },
       { href: "/pharmacy/orders", label: "Orders" },
+      { href: "/pharmacy/scripts", label: "eScripts" },
+    ],
+  },
+  {
+    label: "Pharmacy",
+    links: [
+      { href: "/pharmacy/profile", label: "Profile" },
       { href: "/pharmacy/locations", label: "Locations" },
+      { href: "/pharmacy/staff", label: "Staff" },
+      { href: "/pharmacy/reports", label: "Reports" },
     ],
   },
 ];
@@ -110,6 +119,7 @@ const affiliateGroups: PortalNavGroup[] = [
 export function PortalFrame({
   user,
   children,
+  workspace,
 }: {
   user: {
     name: string;
@@ -118,6 +128,8 @@ export function PortalFrame({
     org: { legalName: string; verificationTier: number; assignedRep: string };
   };
   children: React.ReactNode;
+  /** Force nav when an admin opens another workspace (e.g. /pharmacy). */
+  workspace?: "admin" | "pharmacy" | "practice" | "affiliate";
 }) {
   const roles = rolesOf(user.roles);
   const admin = roles.includes("admin") && !roles.some((role) => ["owner", "prescriber", "staff"].includes(role));
@@ -128,14 +140,20 @@ export function PortalFrame({
   const affiliateOnly =
     roles.includes("affiliate") && !roles.some((role) => ["owner", "prescriber", "staff"].includes(role));
 
-  const groups = admin
-    ? adminGroups
-    : pharmacyOnly
-      ? pharmacyGroups
-      : affiliateOnly
-        ? affiliateGroups
-        : practiceGroups(billingOnly);
-  const home = admin ? "/admin" : pharmacyOnly ? "/pharmacy" : "/portal";
+  const mode =
+    workspace ||
+    (admin ? "admin" : pharmacyOnly ? "pharmacy" : affiliateOnly ? "affiliate" : "practice");
+
+  const groups =
+    mode === "admin"
+      ? adminGroups
+      : mode === "pharmacy"
+        ? pharmacyGroups
+        : mode === "affiliate"
+          ? affiliateGroups
+          : practiceGroups(billingOnly);
+  const home = mode === "admin" ? "/admin" : mode === "pharmacy" ? "/pharmacy" : "/portal";
+  const sideLabel = mode === "pharmacy" ? "Pharmacy partner" : admin ? "Administrator" : tierLabel(user.org.verificationTier);
 
   return (
     <div className="portal">
@@ -146,8 +164,8 @@ export function PortalFrame({
           </Link>
           <div className="side-meta">
             <strong>{user.org.legalName}</strong>
-            <span>{admin ? "Administrator" : tierLabel(user.org.verificationTier)}</span>
-            {!admin ? <span>Rep · {user.org.assignedRep}</span> : null}
+            <span>{sideLabel}</span>
+            {mode === "practice" ? <span>Rep · {user.org.assignedRep}</span> : null}
             <span className="side-user">{user.name}</span>
           </div>
           <form className="side-out-mobile" action={logout}>
