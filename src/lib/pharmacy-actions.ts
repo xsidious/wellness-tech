@@ -88,36 +88,51 @@ export async function fulfillPharmacyOrder(formData: FormData) {
   redirect(`/pharmacy/orders/${order.id}`);
 }
 
+function listFromForm(formData: FormData, key: string) {
+  return JSON.stringify(
+    String(formData.get(key) || "")
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
 export async function updatePharmacyProfile(formData: FormData) {
   const user = await requirePharmacyUser();
   const pharmacyId = pharmacyIdOrThrow(user);
-
-  const specialties = String(formData.get("specialties") || "")
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const capabilities = String(formData.get("capabilities") || "")
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const erp = String(formData.get("erp") || "")
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
 
   await prisma.pharmacy.update({
     where: { id: pharmacyId },
     data: {
       name: String(formData.get("name") || "").trim() || undefined,
+      legalName: String(formData.get("legalName") || "").trim(),
       type: String(formData.get("type") || "").trim() || undefined,
       region: String(formData.get("region") || "").trim(),
       status: String(formData.get("status") || "online").trim(),
+      hours: String(formData.get("hours") || "").trim(),
+      contactName: String(formData.get("contactName") || "").trim(),
       contactEmail: String(formData.get("contactEmail") || "").trim().toLowerCase(),
+      phone: String(formData.get("phone") || "").trim(),
+      website: String(formData.get("website") || "").trim(),
+      licenseNumber: String(formData.get("licenseNumber") || "").trim(),
+      licenseState: String(formData.get("licenseState") || "").trim().toUpperCase().slice(0, 2),
+      npi: String(formData.get("npi") || "").trim(),
+      deaNumber: String(formData.get("deaNumber") || "").trim(),
+      ncpdpId: String(formData.get("ncpdpId") || "").trim(),
+      street1: String(formData.get("street1") || "").trim(),
+      city: String(formData.get("city") || "").trim(),
+      state: String(formData.get("state") || "").trim().toUpperCase().slice(0, 2),
+      zip: String(formData.get("zip") || "").trim(),
       sla: String(formData.get("sla") || "").trim(),
       description: String(formData.get("description") || "").trim(),
-      specialtiesJson: JSON.stringify(specialties),
-      capabilitiesJson: JSON.stringify(capabilities),
-      erpJson: JSON.stringify(erp),
+      coldChain: formData.get("coldChain") === "on",
+      patientShip: formData.get("patientShip") === "on",
+      practiceShip: formData.get("practiceShip") === "on",
+      specialtiesJson: listFromForm(formData, "specialties"),
+      capabilitiesJson: listFromForm(formData, "capabilities"),
+      erpJson: listFromForm(formData, "erp"),
+      statesServedJson: listFromForm(formData, "statesServed"),
+      shippingModesJson: listFromForm(formData, "shippingModes"),
     },
   });
 
@@ -130,6 +145,7 @@ export async function updatePharmacyProfile(formData: FormData) {
 
   revalidatePath("/pharmacy");
   revalidatePath("/pharmacy/profile");
+  revalidatePath("/portal/pharmacies");
   redirect("/pharmacy/profile?saved=1");
 }
 

@@ -355,22 +355,42 @@ model IdempotencyKey {
 }
 
 model Pharmacy {
-  id            String   @id @default(cuid())
-  name          String
-  type          String   @default("Hybrid")
-  region        String   @default("")
-  status        String   @default("online")
-  specialtiesJson String @default("[]")
-  capabilitiesJson String @default("[]")
-  erpJson       String   @default("[]")
-  sla           String   @default("")
-  description   String   @default("")
-  contactEmail  String   @default("")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  orders        Order[]
-  users         User[]
-  locations     PharmacyLocation[]
+  id                 String   @id @default(cuid())
+  name               String
+  legalName          String   @default("")
+  type               String   @default("Hybrid")
+  region             String   @default("")
+  status             String   @default("online")
+  specialtiesJson    String   @default("[]")
+  capabilitiesJson   String   @default("[]")
+  erpJson            String   @default("[]")
+  statesServedJson   String   @default("[]")
+  shippingModesJson  String   @default("[]")
+  sla                String   @default("")
+  description        String   @default("")
+  contactName        String   @default("")
+  contactEmail       String   @default("")
+  phone              String   @default("")
+  website            String   @default("")
+  licenseNumber      String   @default("")
+  licenseState       String   @default("")
+  npi                String   @default("")
+  deaNumber          String   @default("")
+  ncpdpId            String   @default("")
+  street1            String   @default("")
+  city               String   @default("")
+  state              String   @default("")
+  zip                String   @default("")
+  hours              String   @default("")
+  coldChain          Boolean  @default(false)
+  patientShip        Boolean  @default(true)
+  practiceShip       Boolean  @default(true)
+  internalNotes      String   @default("")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  orders             Order[]
+  users              User[]
+  locations          PharmacyLocation[]
 }
 
 model PharmacyLocation {

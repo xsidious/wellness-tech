@@ -12,42 +12,88 @@ async function requireAdmin() {
   return user;
 }
 
+function listField(formData: FormData, key: string) {
+  return JSON.stringify(
+    String(formData.get(key) || "")
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
 export async function upsertPharmacy(formData: FormData) {
   const user = await requireAdmin();
   const id = String(formData.get("id") || "");
   const name = String(formData.get("name") || "").trim();
   if (!name) throw new Error("Name required");
+
   const data = {
     name,
-    type: String(formData.get("type") || "Hybrid"),
-    region: String(formData.get("region") || ""),
-    status: String(formData.get("status") || "online"),
-    description: String(formData.get("description") || ""),
-    sla: String(formData.get("sla") || ""),
-    specialtiesJson: JSON.stringify(
-      String(formData.get("specialties") || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-    capabilitiesJson: JSON.stringify(
-      String(formData.get("capabilities") || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-    erpJson: JSON.stringify(
-      String(formData.get("erp") || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-    contactEmail: String(formData.get("contactEmail") || ""),
+    legalName: String(formData.get("legalName") || "").trim(),
+    type: String(formData.get("type") || "Hybrid").trim(),
+    region: String(formData.get("region") || "").trim(),
+    status: String(formData.get("status") || "online").trim(),
+    description: String(formData.get("description") || "").trim(),
+    sla: String(formData.get("sla") || "").trim(),
+    contactName: String(formData.get("contactName") || "").trim(),
+    contactEmail: String(formData.get("contactEmail") || "").trim().toLowerCase(),
+    phone: String(formData.get("phone") || "").trim(),
+    website: String(formData.get("website") || "").trim(),
+    licenseNumber: String(formData.get("licenseNumber") || "").trim(),
+    licenseState: String(formData.get("licenseState") || "").trim().toUpperCase().slice(0, 2),
+    npi: String(formData.get("npi") || "").trim(),
+    deaNumber: String(formData.get("deaNumber") || "").trim(),
+    ncpdpId: String(formData.get("ncpdpId") || "").trim(),
+    street1: String(formData.get("street1") || "").trim(),
+    city: String(formData.get("city") || "").trim(),
+    state: String(formData.get("state") || "").trim().toUpperCase().slice(0, 2),
+    zip: String(formData.get("zip") || "").trim(),
+    hours: String(formData.get("hours") || "").trim(),
+    coldChain: formData.get("coldChain") === "on",
+    patientShip: formData.get("patientShip") === "on",
+    practiceShip: formData.get("practiceShip") === "on",
+    internalNotes: String(formData.get("internalNotes") || "").trim(),
+    specialtiesJson: listField(formData, "specialties"),
+    capabilitiesJson: listField(formData, "capabilities"),
+    erpJson: listField(formData, "erp"),
+    statesServedJson: listField(formData, "statesServed"),
+    shippingModesJson: listField(formData, "shippingModes"),
   };
 
   const pharmacy = id
     ? await prisma.pharmacy.update({ where: { id }, data })
     : await prisma.pharmacy.create({ data });
+
+  // Keep a matching HQ location in sync when address is provided.
+  if (data.street1 || data.city) {
+    const existingDefault = await prisma.pharmacyLocation.findFirst({
+      where: { pharmacyId: pharmacy.id, isDefault: true },
+    });
+    if (existingDefault) {
+      await prisma.pharmacyLocation.update({
+        where: { id: existingDefault.id },
+        data: {
+          label: existingDefault.label || "HQ",
+          street1: data.street1,
+          city: data.city,
+          state: data.state,
+          zip: data.zip,
+        },
+      });
+    } else {
+      await prisma.pharmacyLocation.create({
+        data: {
+          pharmacyId: pharmacy.id,
+          label: "HQ",
+          street1: data.street1,
+          city: data.city,
+          state: data.state,
+          zip: data.zip,
+          isDefault: true,
+        },
+      });
+    }
+  }
 
   await audit({
     actorId: user.id,
@@ -57,6 +103,9 @@ export async function upsertPharmacy(formData: FormData) {
   });
 
   revalidatePath("/admin/pharmacies");
+  revalidatePath(`/admin/pharmacies/${pharmacy.id}`);
+  revalidatePath("/portal/pharmacies");
+  revalidatePath("/pharmacy/profile");
   redirect(`/admin/pharmacies/${pharmacy.id}`);
 }
 
