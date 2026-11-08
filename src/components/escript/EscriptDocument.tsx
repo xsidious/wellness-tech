@@ -4,7 +4,7 @@ import {
   formatAddress,
   parseLinesSnapshot,
   parsePatientSnapshot,
-} from "@/lib/escript";
+} from "@/lib/escript-shared";
 
 export type EscriptDocumentModel = {
   id: string;

@@ -8,7 +8,7 @@ import {
   type EscriptLineSnapshot,
   type EscriptPatientSnapshot,
   formatAddress,
-} from "@/lib/escript";
+} from "@/lib/escript-shared";
 
 type Props = {
   patient?: EscriptPatientSnapshot | null;

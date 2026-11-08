@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { EscriptSigningPanel } from "@/components/escript/EscriptSigningPanel";
 import { placeOrder } from "@/lib/actions";
-import type { EscriptLineSnapshot, EscriptPatientSnapshot } from "@/lib/escript";
+import type { EscriptLineSnapshot, EscriptPatientSnapshot } from "@/lib/escript-shared";
 
 export function CheckoutForm({
   needsEscript = false,
