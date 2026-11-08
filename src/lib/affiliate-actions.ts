@@ -71,3 +71,24 @@ export async function runAffiliatePayout(formData: FormData) {
   revalidatePath("/admin/settlements");
   redirect(`/admin/settlements/${settlement.id}`);
 }
+
+export async function updateAffiliateW9(formData: FormData) {
+  const user = await requireUser();
+  if (!user.affiliate) throw new Error("Affiliate profile required");
+  const status = String(formData.get("w9Status") || "").trim();
+  if (!["sandbox_received", "submitted", "verified", "rejected"].includes(status)) {
+    throw new Error("Invalid W-9 status");
+  }
+  await prisma.affiliateProfile.update({
+    where: { id: user.affiliate.id },
+    data: { w9Status: status },
+  });
+  await audit({
+    actorId: user.id,
+    action: "affiliate.w9",
+    object: user.affiliate.id,
+    after: status,
+  });
+  revalidatePath("/portal/affiliate");
+  redirect("/portal/affiliate?w9=1");
+}

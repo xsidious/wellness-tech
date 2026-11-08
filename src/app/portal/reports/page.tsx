@@ -30,8 +30,8 @@ export default async function ReportsPage() {
         title="Reports"
         lede="Practice-level volume and spend. Internal wholesale margin stays out of this view."
         actions={
-          <Link className="btn btn-ghost" href="/portal/orders">
-            Export via orders
+          <Link className="btn btn-ghost" href="/portal/orders/export">
+            Export orders CSV
           </Link>
         }
       />

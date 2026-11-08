@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   EmptyState,
   PageHeader,
@@ -34,9 +35,13 @@ export default async function PatientPortalHome({
       take: 20,
     }),
     prisma.message.findMany({
-      where: { orgId: user.orgId },
+      where: {
+        orgId: user.orgId,
+        channel: "patient",
+        clinicalPatientId: user.clinicalPatientId,
+      },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 40,
     }),
   ]);
 
@@ -69,7 +74,11 @@ export default async function PatientPortalHome({
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id}>
-                    <td>{order.invoiceNumber}</td>
+                    <td>
+                      <Link href={`/patient/portal/orders/${order.id}`}>
+                        <b>{order.invoiceNumber}</b>
+                      </Link>
+                    </td>
                     <td>{order.lines.map((l) => l.name).join(", ")}</td>
                     <td>{order.shipDestination}</td>
                     <td>

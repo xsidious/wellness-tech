@@ -152,6 +152,7 @@ model ClinicalPatient {
   portalUsers        User[]       @relation("PatientUser")
   escripts           EScript[]
   refillRequests     RefillRequest[]
+  messages           Message[]
 
   @@unique([orgId, email, kianIntakeId])
   @@index([email])
@@ -328,12 +329,21 @@ model WebhookDelivery {
 }
 
 model Message {
-  id         String       @id @default(cuid())
-  orgId      String
-  org        Organization @relation(fields: [orgId], references: [id])
-  authorName String
-  body       String
-  createdAt  DateTime     @default(now())
+  id                String       @id @default(cuid())
+  orgId             String
+  org               Organization @relation(fields: [orgId], references: [id])
+  authorName        String
+  authorUserId      String       @default("")
+  body              String
+  /// rep = practice↔Wellness Tech; patient = practice↔patient portal
+  channel           String       @default("rep")
+  clinicalPatientId String?
+  clinicalPatient   ClinicalPatient? @relation(fields: [clinicalPatientId], references: [id], onDelete: SetNull)
+  readAt            DateTime?
+  createdAt         DateTime     @default(now())
+
+  @@index([orgId, channel])
+  @@index([clinicalPatientId])
 }
 
 model AuditEvent {

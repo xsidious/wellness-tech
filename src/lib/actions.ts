@@ -790,7 +790,16 @@ export async function sendRepMessage(formData: FormData) {
   if (!user) redirect("/login");
   const body = String(formData.get("body") || "").trim();
   if (body.length < 2) redirect("/portal/messages?error=Write+a+message");
-  await prisma.message.create({ data: { orgId: user.orgId, authorName: user.name, body } });
+  await prisma.message.create({
+    data: {
+      orgId: user.orgId,
+      authorName: user.name,
+      authorUserId: user.id,
+      body,
+      channel: "rep",
+      readAt: new Date(),
+    },
+  });
   redirect("/portal/messages");
 }
 

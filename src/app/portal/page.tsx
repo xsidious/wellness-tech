@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AttentionStrip, type AttentionItem } from "@/components/portal/AttentionStrip";
 import {
   EmptyState,
   PageHeader,
@@ -40,9 +41,35 @@ export default async function PortalHome() {
     );
   }
 
-  const [openOrders, dueRefills, cart, patients, recent, spendAgg] = await Promise.all([
+  const [
+    openOrders,
+    dueRefills,
+    openRefillRequests,
+    pendingEscripts,
+    unpaidInvoices,
+    unreadPatientMessages,
+    cart,
+    patients,
+    recent,
+    spendAgg,
+  ] = await Promise.all([
     prisma.order.count({ where: { orgId: user.orgId, status: { not: "delivered" } } }),
     prisma.refill.count({ where: { orgId: user.orgId, status: "due" } }),
+    prisma.refillRequest.count({
+      where: { status: "requested", clinicalPatient: { orgId: user.orgId } },
+    }),
+    prisma.order.count({ where: { orgId: user.orgId, escriptStatus: "pending_signature" } }),
+    prisma.order.count({
+      where: { orgId: user.orgId, paymentStatus: { in: ["unpaid", "pending", "failed"] } },
+    }),
+    prisma.message.count({
+      where: {
+        orgId: user.orgId,
+        channel: "patient",
+        readAt: null,
+        NOT: { authorUserId: user.id },
+      },
+    }),
     prisma.cartItem.count({ where: { userId: user.id } }),
     prisma.clinicalPatient.count({ where: { orgId: user.orgId } }),
     prisma.order.findMany({
@@ -53,6 +80,46 @@ export default async function PortalHome() {
     }),
     prisma.order.aggregate({ where: { orgId: user.orgId }, _sum: { totalCents: true }, _count: true }),
   ]);
+
+  const attention: AttentionItem[] = [];
+  if (!user.org.onboardingComplete) {
+    attention.push({ href: "/portal/settings", label: "Finish practice onboarding", tone: "warn" });
+  }
+  if (openRefillRequests) {
+    attention.push({
+      href: "/portal/refills",
+      label: `${openRefillRequests} patient refill request${openRefillRequests === 1 ? "" : "s"}`,
+      tone: "warn",
+    });
+  }
+  if (dueRefills) {
+    attention.push({
+      href: "/portal/refills",
+      label: `${dueRefills} scheduled refill${dueRefills === 1 ? "" : "s"} due`,
+      tone: "warn",
+    });
+  }
+  if (pendingEscripts) {
+    attention.push({
+      href: "/portal/orders?escript=pending_signature",
+      label: `${pendingEscripts} eScript${pendingEscripts === 1 ? "" : "s"} awaiting signature`,
+      tone: "warn",
+    });
+  }
+  if (unpaidInvoices) {
+    attention.push({
+      href: "/portal/invoices?payment=unpaid",
+      label: `${unpaidInvoices} unpaid invoice${unpaidInvoices === 1 ? "" : "s"}`,
+      tone: "info",
+    });
+  }
+  if (unreadPatientMessages) {
+    attention.push({
+      href: "/portal/messages",
+      label: `${unreadPatientMessages} unread patient message${unreadPatientMessages === 1 ? "" : "s"}`,
+      tone: "info",
+    });
+  }
 
   return (
     <div className="ws-stack">
@@ -72,9 +139,17 @@ export default async function PortalHome() {
         }
       />
 
+      <AttentionStrip items={attention} />
+
       <div className="ws-stat-grid">
         <StatTile label="Open orders" value={openOrders} hint="Awaiting fulfillment" tone="accent" />
         <StatTile label="Refills due" value={dueRefills} hint="Needs approval" tone={dueRefills ? "warn" : "ok"} />
+        <StatTile
+          label="Patient requests"
+          value={openRefillRequests}
+          hint="Portal refill inbox"
+          tone={openRefillRequests ? "warn" : "ok"}
+        />
         <StatTile label="Patients" value={patients} hint="Clinical charts on file" />
         <StatTile
           label="Lifetime spend"

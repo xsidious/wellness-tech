@@ -14,7 +14,13 @@ import { requireUser, rolesOf } from "@/lib/guard";
 import { invitePatientPortal } from "@/lib/practice-actions";
 import { prisma } from "@/lib/prisma";
 
-export default async function PatientChartPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PatientChartPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ invited?: string }>;
+}) {
   const user = await requireUser();
   const roles = rolesOf(user.roles);
   if (roles.includes("billing") && !roles.some((role) => ["owner", "prescriber", "staff", "admin"].includes(role))) {
@@ -22,6 +28,7 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
   }
 
   const { id } = await params;
+  const notices = await searchParams;
   const patient = await prisma.clinicalPatient.findFirst({
     where: { id, orgId: user.orgId },
     include: {
@@ -30,9 +37,16 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
         include: { lines: true },
         take: 20,
       },
+      portalUsers: { select: { id: true, passwordHash: true, lastLoginAt: true, email: true } },
     },
   });
   if (!patient) notFound();
+  const portalUser = patient.portalUsers[0];
+  const portalStatus = !portalUser
+    ? "not invited"
+    : portalUser.lastLoginAt
+      ? "active"
+      : "invited";
 
   await audit({
     actorId: user.id,
@@ -63,7 +77,7 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
             <form action={invitePatientPortal}>
               <input type="hidden" name="clinicalPatientId" value={patient.id} />
               <button className="btn btn-ghost" type="submit">
-                Invite to patient portal
+                {portalStatus === "not invited" ? "Invite to patient portal" : "Resend portal invite"}
               </button>
             </form>
             {latest ? (
@@ -74,6 +88,9 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
           </div>
         }
       />
+      {notices.invited ? (
+        <p className="note">Portal invite email sent to {patient.email}. Status: {portalStatus}.</p>
+      ) : null}
 
       <div className="ws-stat-grid">
         <div className="ws-stat">
@@ -87,6 +104,14 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
           <strong className="ws-stat-value" style={{ fontSize: "1.1rem" }}>
             <StatusBadge tone={statusTone(patient.intakeStatus || "")}>
               {patient.intakeStatus || "—"}
+            </StatusBadge>
+          </strong>
+        </div>
+        <div className="ws-stat">
+          <span className="ws-stat-label">Portal</span>
+          <strong className="ws-stat-value" style={{ fontSize: "1.1rem" }}>
+            <StatusBadge tone={portalStatus === "active" ? "ok" : portalStatus === "invited" ? "info" : "neutral"}>
+              {portalStatus}
             </StatusBadge>
           </strong>
         </div>

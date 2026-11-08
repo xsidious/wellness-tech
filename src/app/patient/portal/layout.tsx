@@ -28,6 +28,7 @@ export default async function PatientPortalLayout({ children }: { children: Reac
           <Link href="/patient/portal">My prescriptions</Link>
           <Link href="/patient/portal#refills">Refills</Link>
           <Link href="/patient/portal#messages">Messages</Link>
+          <Link href="/patient/portal">Order tracking</Link>
         </nav>
         <div className="side-foot">
           <form action={logout}>

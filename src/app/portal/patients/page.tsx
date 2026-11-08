@@ -25,7 +25,10 @@ export default async function PatientsPage() {
       where: { orgId: user.orgId },
       orderBy: { updatedAt: "desc" },
       take: 200,
-      include: { _count: { select: { orders: true } } },
+      include: {
+        _count: { select: { orders: true } },
+        portalUsers: { select: { id: true, passwordHash: true, lastLoginAt: true } },
+      },
     }),
     prisma.patientRef.findMany({ where: { orgId: user.orgId }, take: 50 }),
   ]);
@@ -70,7 +73,8 @@ export default async function PatientsPage() {
                   <th>Patient</th>
                   <th>DOB</th>
                   <th>Programs</th>
-                  <th>Status</th>
+                  <th>Intake</th>
+                  <th>Portal</th>
                   <th>Orders</th>
                   <th>Updated</th>
                   <th></th>
@@ -80,6 +84,14 @@ export default async function PatientsPage() {
                 {clinicalPatients.map((patient) => {
                   const programs = parseJsonSafe<string[]>(patient.programsJson, []);
                   const sigs = parseJsonSafe<unknown[]>(patient.signaturesJson, []);
+                  const portalUser = patient.portalUsers[0];
+                  const portalStatus = !portalUser
+                    ? "not invited"
+                    : portalUser.lastLoginAt
+                      ? "active"
+                      : portalUser.passwordHash
+                        ? "invited"
+                        : "invited";
                   return (
                     <tr key={patient.id}>
                       <td>
@@ -97,6 +109,15 @@ export default async function PatientsPage() {
                       <td>
                         <StatusBadge tone={statusTone(patient.intakeStatus || "")}>
                           {patient.intakeStatus || "—"}
+                        </StatusBadge>
+                      </td>
+                      <td>
+                        <StatusBadge
+                          tone={
+                            portalStatus === "active" ? "ok" : portalStatus === "invited" ? "info" : "neutral"
+                          }
+                        >
+                          {portalStatus}
                         </StatusBadge>
                       </td>
                       <td>{patient._count.orders}</td>

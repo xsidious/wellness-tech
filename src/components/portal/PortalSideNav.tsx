@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export type PortalNavLink = { href: string; label: string; exact?: boolean };
+export type PortalNavLink = { href: string; label: string; exact?: boolean; badge?: number };
 export type PortalNavGroup = { label: string; links: PortalNavLink[] };
 
 function isActive(pathname: string, href: string, exact?: boolean) {
@@ -26,7 +26,8 @@ export function PortalSideNav({ groups }: { groups: PortalNavGroup[] }) {
                 <li key={link.href}>
                   <Link href={link.href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
                     <span className="side-dot" aria-hidden />
-                    {link.label}
+                    <span className="side-link-label">{link.label}</span>
+                    {link.badge && link.badge > 0 ? <span className="side-badge">{link.badge > 99 ? "99+" : link.badge}</span> : null}
                   </Link>
                 </li>
               );

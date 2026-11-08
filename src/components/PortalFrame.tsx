@@ -5,15 +5,26 @@ import { logout } from "@/lib/actions";
 import { rolesOf } from "@/lib/guard";
 import { tierLabel } from "@/lib/rules";
 
-function practiceGroups(billingOnly: boolean): PortalNavGroup[] {
+function practiceGroups(
+  billingOnly: boolean,
+  badges?: { refills?: number; messages?: number; unpaid?: number },
+): PortalNavGroup[] {
   return [
     {
       label: "Workspace",
       links: [
         { href: "/portal", label: "Dashboard", exact: true },
         { href: "/portal/orders", label: "Orders" },
-        { href: "/portal/invoices", label: "Invoices" },
-        { href: "/portal/refills", label: "Refills" },
+        {
+          href: "/portal/invoices",
+          label: "Invoices",
+          badge: badges?.unpaid || undefined,
+        },
+        {
+          href: "/portal/refills",
+          label: "Refills",
+          badge: badges?.refills || undefined,
+        },
       ],
     },
     {
@@ -37,7 +48,11 @@ function practiceGroups(billingOnly: boolean): PortalNavGroup[] {
       label: "Operations",
       links: [
         { href: "/portal/reports", label: "Reports" },
-        { href: "/portal/messages", label: "Messages" },
+        {
+          href: "/portal/messages",
+          label: "Messages",
+          badge: badges?.messages || undefined,
+        },
         { href: "/portal/education", label: "Education" },
         { href: "/portal/settings", label: "Settings" },
       ],
@@ -120,8 +135,10 @@ export function PortalFrame({
   user,
   children,
   workspace,
+  badges,
 }: {
   user: {
+    id?: string;
     name: string;
     email: string;
     roles: string;
@@ -130,6 +147,7 @@ export function PortalFrame({
   children: React.ReactNode;
   /** Force nav when an admin opens another workspace (e.g. /pharmacy). */
   workspace?: "admin" | "pharmacy" | "practice" | "affiliate";
+  badges?: { refills?: number; messages?: number; unpaid?: number };
 }) {
   const roles = rolesOf(user.roles);
   const admin = roles.includes("admin") && !roles.some((role) => ["owner", "prescriber", "staff"].includes(role));
@@ -151,7 +169,7 @@ export function PortalFrame({
         ? pharmacyGroups
         : mode === "affiliate"
           ? affiliateGroups
-          : practiceGroups(billingOnly);
+          : practiceGroups(billingOnly, badges);
   const home = mode === "admin" ? "/admin" : mode === "pharmacy" ? "/pharmacy" : "/portal";
   const sideLabel = mode === "pharmacy" ? "Pharmacy partner" : admin ? "Administrator" : tierLabel(user.org.verificationTier);
 

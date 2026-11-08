@@ -9,6 +9,7 @@ import { assertCanSignEscript, buildLinesSnapshot, buildPatientSnapshot } from "
 import { requireUser } from "@/lib/guard";
 import { signEscript } from "@/lib/practice-actions";
 import { prisma } from "@/lib/prisma";
+import { trackingHref } from "@/lib/tracking";
 
 const STEPS = ["received", "verified", "compounding", "shipped", "delivered", "submitted", "on_hold"];
 
@@ -85,7 +86,22 @@ export default async function OrderDetail({
         <div className="ws-stat">
           <span className="ws-stat-label">Tracking</span>
           <strong className="ws-stat-value" style={{ fontSize: "1.05rem" }}>
-            {order.trackingNumber || "—"}
+            {order.trackingNumber ? (
+              trackingHref(order.trackingNumber) ? (
+                <a
+                  href={trackingHref(order.trackingNumber)!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ws-text-link"
+                >
+                  {order.trackingNumber}
+                </a>
+              ) : (
+                order.trackingNumber
+              )
+            ) : (
+              "—"
+            )}
           </strong>
         </div>
       </div>

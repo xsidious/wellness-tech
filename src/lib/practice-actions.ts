@@ -155,9 +155,88 @@ export async function invitePatientPortal(formData: FormData) {
     });
   }
 
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.wellnesstechdistribution.com").replace(/\/$/, "");
+  try {
+    const { sendTransactionalEmail } = await import("@/lib/email");
+    await sendTransactionalEmail({
+      to: patient.email,
+      subject: `${user.org.legalName} invited you to your Wellness Tech patient portal`,
+      text: [
+        `Hi ${patient.fullName},`,
+        "",
+        `${user.org.legalName} invited you to view prescriptions, tracking, and refill requests online.`,
+        "",
+        `Open your portal: ${appUrl}/login?next=/patient/portal`,
+        "",
+        "Use the email this message was sent to. Request a magic code or password reset if you do not have a password yet.",
+      ].join("\n"),
+      html: `<div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1a1a1a;max-width:520px">
+        <p>Hi ${patient.fullName},</p>
+        <p><strong>${user.org.legalName}</strong> invited you to view prescriptions, tracking, and refill requests online.</p>
+        <p><a href="${appUrl}/login?next=/patient/portal">Open your patient portal</a></p>
+        <p style="color:#555;font-size:14px">Use this email address to sign in. Request a magic code if you do not have a password yet.</p>
+      </div>`,
+    });
+  } catch (error) {
+    console.error("patient invite email failed", error);
+  }
+
   await audit({ actorId: user.id, action: "patient.invite", object: patient.id, after: patient.email });
   revalidatePath(`/portal/patients/${patient.id}`);
+  revalidatePath("/portal/patients");
   redirect(`/portal/patients/${patient.id}?invited=1`);
+}
+
+export async function decidePatientRefillRequest(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") || "");
+  const decision = String(formData.get("decision") || "");
+  if (!["approved", "declined"].includes(decision)) throw new Error("Invalid decision");
+
+  const request = await prisma.refillRequest.findFirst({
+    where: { id, clinicalPatient: { orgId: user.orgId } },
+    include: { clinicalPatient: true },
+  });
+  if (!request) throw new Error("Refill request not found");
+
+  await prisma.refillRequest.update({
+    where: { id },
+    data: { status: decision },
+  });
+
+  if (decision === "approved") {
+    // Create a due refill draft the practice can convert with approveRefill.
+    const due = new Date();
+    due.setDate(due.getDate() + 1);
+    await prisma.refill.create({
+      data: {
+        orgId: user.orgId,
+        patientInitials: request.clinicalPatient.fullName
+          .split(/\s+/)
+          .map((p) => p[0] || "")
+          .join("")
+          .slice(0, 4)
+          .toUpperCase() || "PT",
+        productName: request.productName,
+        productSku: request.productSku || "REFILL",
+        dueAt: due,
+        daysSupply: 30,
+        status: "due",
+        autopay: false,
+      },
+    });
+  }
+
+  await audit({
+    actorId: user.id,
+    action: `refill_request.${decision}`,
+    object: id,
+    after: request.productName,
+  });
+
+  revalidatePath("/portal/refills");
+  revalidatePath("/portal");
+  redirect(`/portal/refills?${decision}=1`);
 }
 
 export async function signEscript(formData: FormData) {
@@ -270,16 +349,70 @@ export async function requestPatientRefill(formData: FormData) {
 export async function sendPatientMessage(formData: FormData) {
   const user = await requireUser();
   const body = String(formData.get("body") || "").trim();
-  if (!body) redirect("/patient/portal");
+  if (!body || !user.clinicalPatientId) redirect("/patient/portal");
   await prisma.message.create({
     data: {
       orgId: user.orgId,
       authorName: user.name,
+      authorUserId: user.id,
       body,
+      channel: "patient",
+      clinicalPatientId: user.clinicalPatientId,
     },
   });
   revalidatePath("/patient/portal");
+  revalidatePath("/portal/messages");
   redirect("/patient/portal?sent=1");
+}
+
+export async function replyPatientMessage(formData: FormData) {
+  const user = await requireUser();
+  const body = String(formData.get("body") || "").trim();
+  const clinicalPatientId = String(formData.get("clinicalPatientId") || "");
+  if (!body || !clinicalPatientId) redirect("/portal/messages");
+
+  const patient = await prisma.clinicalPatient.findFirst({
+    where: { id: clinicalPatientId, orgId: user.orgId },
+  });
+  if (!patient) throw new Error("Patient not found");
+
+  await prisma.message.create({
+    data: {
+      orgId: user.orgId,
+      authorName: user.name,
+      authorUserId: user.id,
+      body,
+      channel: "patient",
+      clinicalPatientId: patient.id,
+      // Practice reply is already "read" for the practice inbox.
+      readAt: new Date(),
+    },
+  });
+
+  revalidatePath("/portal/messages");
+  revalidatePath("/patient/portal");
+  redirect(`/portal/messages?patient=${patient.id}&sent=1`);
+}
+
+export async function markPatientMessagesRead(formData: FormData) {
+  const user = await requireUser();
+  const clinicalPatientId = String(formData.get("clinicalPatientId") || "");
+  if (!clinicalPatientId) redirect("/portal/messages");
+
+  await prisma.message.updateMany({
+    where: {
+      orgId: user.orgId,
+      channel: "patient",
+      clinicalPatientId,
+      readAt: null,
+      // Only mark inbound patient notes (not our own replies).
+      NOT: { authorUserId: user.id },
+    },
+    data: { readAt: new Date() },
+  });
+
+  revalidatePath("/portal/messages");
+  redirect(`/portal/messages?patient=${clinicalPatientId}`);
 }
 
 /** Re-export for pharmacy fulfill path type-check convenience */
