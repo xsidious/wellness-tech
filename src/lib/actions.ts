@@ -221,7 +221,10 @@ export async function verifyMagic(formData: FormData) {
     await setPending(email);
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return { next: "signup" as const, email };
-    if (!user.mfaEnabled) return { next: "mfa-setup" as const, email };
+    if (!user.passwordHash) {
+      redirect(`/claim-account?email=${encodeURIComponent(email)}`);
+    }
+    if (!user.mfaEnabled || !user.mfaHash) return { next: "mfa-setup" as const, email };
     return { next: "mfa" as const, email };
   } catch (error) {
     return { error: signInError(error) };

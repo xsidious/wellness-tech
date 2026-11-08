@@ -101,7 +101,7 @@ export default async function PortalHome() {
   }
   if (pendingEscripts) {
     attention.push({
-      href: "/portal/orders?escript=pending_signature",
+      href: "/portal/script-requests",
       label: `${pendingEscripts} eScript${pendingEscripts === 1 ? "" : "s"} awaiting signature`,
       tone: "warn",
     });

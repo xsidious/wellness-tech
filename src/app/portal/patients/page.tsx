@@ -11,16 +11,25 @@ import {
 import { audit } from "@/lib/audit";
 import { parseJsonSafe } from "@/lib/clinical-chart";
 import { requireUser, rolesOf } from "@/lib/guard";
+import { ensureClinicCode, importPatientsCsv } from "@/lib/portal-ops-actions";
 import { prisma } from "@/lib/prisma";
 
-export default async function PatientsPage() {
+export default async function PatientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ imported?: string }>;
+}) {
   const user = await requireUser();
   const roles = rolesOf(user.roles);
   if (roles.includes("billing") && !roles.some((role) => ["owner", "prescriber", "staff", "admin"].includes(role))) {
     redirect("/portal?notice=billing");
   }
+  const notices = await searchParams;
+  const clinicCode = await ensureClinicCode();
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.wellnesstechdistribution.com").replace(/\/$/, "");
+  const signupLink = `${appUrl}/signup?clinic=${clinicCode}`;
 
-  const [clinicalPatients, legacy] = await Promise.all([
+  const [clinicalPatients, legacy, favorites] = await Promise.all([
     prisma.clinicalPatient.findMany({
       where: { orgId: user.orgId },
       orderBy: { updatedAt: "desc" },
@@ -31,6 +40,7 @@ export default async function PatientsPage() {
       },
     }),
     prisma.patientRef.findMany({ where: { orgId: user.orgId }, take: 50 }),
+    prisma.rxFavorite.findMany({ where: { orgId: user.orgId }, take: 40 }),
   ]);
 
   await audit({
@@ -52,17 +62,53 @@ export default async function PatientsPage() {
         title="Patients"
         lede="Charts from KIAN handoff or in-portal intake — demographics, prescriptions, consents, and signatures."
         actions={
-          <Link className="btn btn-accent" href="/portal/patients/new">
-            New intake
-          </Link>
+          <div className="ws-head-actions">
+            <Link className="btn btn-ghost" href="/portal/forms">
+              Forms
+            </Link>
+            <Link className="btn btn-accent" href="/portal/patients/new">
+              Add patient
+            </Link>
+          </div>
         }
       />
+      {notices.imported ? <p className="note">Imported {notices.imported} patient(s) from CSV.</p> : null}
 
       <div className="ws-stat-grid">
         <StatTile label="Charts" value={clinicalPatients.length} tone="accent" />
         <StatTile label="With signatures" value={withSigs} tone="ok" />
+        <StatTile label="Rx favorites" value={favorites.length} />
         <StatTile label="Legacy refs" value={legacy.length} />
       </div>
+
+      <div className="ws-split">
+        <SectionCard title="Patient signup link" description="Share this link. Patients who sign up are attributed to your practice.">
+          <p style={{ wordBreak: "break-all" }}>
+            <code>{signupLink}</code>
+          </p>
+          <p className="muted">Clinic code: {clinicCode}</p>
+        </SectionCard>
+        <SectionCard title="Import CSV" description="Columns: fullName, email, phone, dateOfBirth">
+          <form action={importPatientsCsv} className="ws-message-form">
+            <textarea name="csv" rows={5} required placeholder={"fullName,email,phone,dateOfBirth\nJane Doe,jane@clinic.com,555-0100,1990-01-15"} />
+            <button className="btn btn-accent" type="submit">
+              Import CSV
+            </button>
+          </form>
+        </SectionCard>
+      </div>
+
+      {favorites.length ? (
+        <SectionCard title="Rx favorites" description="Saved SKUs from the marketplace for quick reorder.">
+          <ul>
+            {favorites.map((f) => (
+              <li key={f.id}>
+                <Link href={`/portal/catalog/${f.sku}`}>{f.name}</Link> · {f.sku}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Clinical charts" description="Open a chart for full patient details, therapy lines, and signature images.">
         {clinicalPatients.length ? (

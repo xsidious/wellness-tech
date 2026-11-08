@@ -2,10 +2,11 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { completeSignup, confirmMfa, practicePasswordLogin } from "@/lib/actions";
+import { completeSignup, confirmMfa, practicePasswordLogin, requestMagic, verifyMagic } from "@/lib/actions";
 import { TurnstileField } from "@/components/TurnstileField";
 
 export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?: string; turnstileSiteKey?: string }) {
+  const [mode, setMode] = useState<"password" | "magic">("password");
   const [showPassword, setShowPassword] = useState(false);
   const [state, action, pending] = useActionState(
     async (
@@ -18,17 +19,27 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
     async (_prev: { error?: string } | null, formData: FormData) => confirmMfa(formData),
     null,
   );
+  const [magicState, magicAction, magicPending] = useActionState(
+    async (_prev: Record<string, string> | null, formData: FormData) => {
+      const result =
+        formData.get("step") === "verify" ? await verifyMagic(formData) : await requestMagic(formData);
+      return (result || {}) as unknown as Record<string, string>;
+    },
+    null,
+  );
 
   const awaitingMfa = state?.next === "mfa";
-  const email = state?.email || "";
+  const email = state?.email || magicState?.email || "";
+  const magicSent = Boolean(magicState?.email && !magicState?.next && !magicState?.error);
+  const magicNeedsMfa = magicState?.next === "mfa" || magicState?.next === "mfa-setup";
 
-  if (awaitingMfa && email) {
+  if ((awaitingMfa || magicNeedsMfa) && email) {
     return (
       <div className="auth-card">
         <form className="auth-form" action={mfaAction}>
           <input type="hidden" name="next" value={nextPath} />
           <p className="auth-step-note">
-            Password accepted for <strong>{email}</strong>. Enter your 6-digit security PIN to finish.
+            Continue for <strong>{email}</strong>. Enter your 6-digit security PIN.
           </p>
           <label className="auth-field">
             <span>Security PIN</span>
@@ -53,6 +64,55 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
           </button>
           <p className="auth-meta">
             <Link href="/login">Start over</Link>
+          </p>
+        </form>
+      </div>
+    );
+  }
+
+  if (mode === "magic") {
+    return (
+      <div className="auth-card">
+        <form className="auth-form" action={magicAction}>
+          <input type="hidden" name="next" value={nextPath} />
+          <input type="hidden" name="step" value={magicSent ? "verify" : "request"} />
+          <label aria-hidden="true" className="auth-honeypot">
+            Company website
+            <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
+          </label>
+          <label className="auth-field">
+            <span>Email</span>
+            <input
+              name="email"
+              type="email"
+              required
+              defaultValue={magicState?.email || ""}
+              autoComplete="username"
+              placeholder="you@yourpractice.com"
+            />
+          </label>
+          {magicSent ? (
+            <label className="auth-field">
+              <span>6-digit code</span>
+              <input name="code" inputMode="numeric" minLength={6} maxLength={6} required autoFocus />
+            </label>
+          ) : null}
+          <TurnstileField siteKey={turnstileSiteKey} />
+          {magicState?.error ? (
+            <p className="auth-error" role="alert">
+              {magicState.error}
+            </p>
+          ) : null}
+          {magicState?.code ? <p className="note">Sandbox code: {magicState.code}</p> : null}
+          <button className="btn btn-accent auth-submit" disabled={magicPending}>
+            {magicPending ? "Working…" : magicSent ? "Verify code" : "Email me a code"}
+          </button>
+          <p className="auth-meta">
+            <button type="button" className="ws-text-link" onClick={() => setMode("password")} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>
+              Use password instead
+            </button>
+            {" · "}
+            <Link href="/claim-account">Claim invite</Link>
           </p>
         </form>
       </div>
@@ -108,6 +168,12 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
           {pending ? "Signing in…" : "Sign in"}
         </button>
         <p className="auth-meta">
+          <button type="button" className="ws-text-link" onClick={() => setMode("magic")} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>
+            Email me a magic code
+          </button>
+          {" · "}
+          <Link href="/claim-account">Claim invite</Link>
+          <br />
           Staff catalog operators use the <Link href="/admin/login">admin login</Link>.
         </p>
       </form>

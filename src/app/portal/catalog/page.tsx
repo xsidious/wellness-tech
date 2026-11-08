@@ -6,42 +6,78 @@ import {
   StatusBadge,
 } from "@/components/portal/Workspace";
 import { addToCart } from "@/lib/actions";
-import { requireUser } from "@/lib/guard";
+import { requireUser, rolesOf } from "@/lib/guard";
 import { money } from "@/lib/money";
 import { photoForClass } from "@/lib/photos";
+import { submitCompoundRequest, toggleRxFavorite } from "@/lib/portal-ops-actions";
 import { prisma } from "@/lib/prisma";
 import { canOrder, isProductClass } from "@/lib/rules";
+
+const TABS = [
+  { id: "all", label: "All" },
+  { id: "503a", label: "503A" },
+  { id: "503b", label: "503B" },
+  { id: "puo", label: "PUO / Office" },
+  { id: "lab", label: "Lab Kits" },
+  { id: "supplies", label: "Supplies" },
+] as const;
+
+function matchesTab(tab: string, product: { productClass: string; category: string; officeUse: boolean; name: string }) {
+  const klass = product.productClass.toLowerCase();
+  const blob = `${product.category} ${product.name}`.toLowerCase();
+  if (tab === "all" || !tab) return true;
+  if (tab === "503a") return klass === "503a";
+  if (tab === "503b") return klass === "503b";
+  if (tab === "puo") return product.officeUse || klass === "device";
+  if (tab === "lab") return /lab|kit|diagnostic|exosome/.test(`${klass} ${blob}`);
+  if (tab === "supplies") return klass === "supply" || /syringe|needle|pad|bag|bottle/.test(blob);
+  return true;
+}
 
 export default async function CatalogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ office?: string; class?: string }>;
+  searchParams: Promise<{ office?: string; class?: string; tab?: string; q?: string; requested?: string }>;
 }) {
   const user = await requireUser();
   const params = await searchParams;
   const office = params.office === "1";
   const classFilter = params.class || "";
-  const products = await prisma.product.findMany({
-    where: {
-      active: true,
-      ...(office ? { officeUse: true } : {}),
-      ...(classFilter ? { productClass: classFilter } : {}),
-    },
-    orderBy: { name: "asc" },
-  });
-  const showPrice = user.org.verificationTier >= 1;
+  const tab = params.tab || (office ? "puo" : "all");
+  const q = (params.q || "").trim().toLowerCase();
+  const roles = rolesOf(user.roles);
+  const hidePrice =
+    user.org.hidePricingFromStaff &&
+    roles.includes("staff") &&
+    !roles.some((r) => ["owner", "prescriber", "billing", "admin"].includes(r));
+  const showPrice = user.org.verificationTier >= 1 && !hidePrice;
+
+  const [products, favorites, compoundRequests] = await Promise.all([
+    prisma.product.findMany({
+      where: {
+        active: true,
+        ...(office ? { officeUse: true } : {}),
+        ...(classFilter ? { productClass: classFilter } : {}),
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.rxFavorite.findMany({ where: { orgId: user.orgId }, select: { sku: true } }),
+    prisma.compoundRequest.findMany({
+      where: { orgId: user.orgId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+  ]);
+  const favSet = new Set(favorites.map((f) => f.sku));
+  const filtered = products.filter((p) => matchesTab(tab, p) && (!q || `${p.name} ${p.sku}`.toLowerCase().includes(q)));
   const classes = Array.from(new Set(products.map((p) => p.productClass).filter(Boolean)));
 
   return (
     <div className="ws-stack">
       <PageHeader
-        kicker={office ? "Office use" : "Commerce"}
-        title={office ? "Office stock" : "Catalog"}
-        lede={
-          showPrice
-            ? "Order compounds and supplies. Prescription lines capture patient initials and sig for pharmacy release."
-            : "Tier 0 can browse. Prices unlock at Tier 1."
-        }
+        kicker="Marketplace"
+        title={office ? "Office stock" : "Marketplace"}
+        lede="Browse the catalog and add items to your cart. Need a custom formulation? Request a compound below."
         actions={
           <div className="ws-head-actions">
             <Link className="btn btn-ghost" href="/portal/price-list">
@@ -53,42 +89,73 @@ export default async function CatalogPage({
           </div>
         }
       />
+      {params.requested ? <p className="note">Custom compound request submitted to Wellness Tech.</p> : null}
+
+      <SectionCard title="Don't see it? Request a custom compound" description="Ask a compounding pharmacy to formulate something that isn't in the catalog yet.">
+        <form action={submitCompoundRequest} className="ws-message-form" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+          <input name="name" required placeholder="Compound name" style={{ minWidth: 180 }} />
+          <input name="strength" placeholder="Strength" />
+          <input name="form" placeholder="Form (inj, troche…)" />
+          <input name="note" placeholder="Clinical note" style={{ minWidth: 200 }} />
+          <button className="btn btn-accent" type="submit">
+            Request compound
+          </button>
+        </form>
+        {compoundRequests.length ? (
+          <ul style={{ marginTop: 12 }}>
+            {compoundRequests.slice(0, 5).map((r) => (
+              <li key={r.id}>
+                {r.name} · {r.status} · {r.createdAt.toLocaleDateString()}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </SectionCard>
 
       <div className="ws-filter-row">
-        <Link
-          href={office ? "/portal/catalog?office=1" : "/portal/catalog"}
-          className={`ws-filter${!classFilter ? " active" : ""}`}
-        >
-          All
+        {TABS.map((t) => (
+          <Link
+            key={t.id}
+            href={`/portal/catalog?tab=${t.id}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            className={`ws-filter${tab === t.id ? " active" : ""}`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      <form className="ws-message-form" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+        <input type="hidden" name="tab" value={tab} />
+        <input name="q" defaultValue={params.q || ""} placeholder="Search products…" style={{ minWidth: 260 }} />
+        <button className="btn btn-ghost" type="submit">
+          Search
+        </button>
+      </form>
+
+      <div className="ws-filter-row">
+        <Link href={`/portal/catalog?tab=${tab}`} className={`ws-filter${!classFilter ? " active" : ""}`}>
+          All classes
         </Link>
         {classes.map((klass) => (
           <Link
             key={klass}
-            href={`${office ? "/portal/catalog?office=1&class=" : "/portal/catalog?class="}${encodeURIComponent(klass)}`}
+            href={`/portal/catalog?tab=${tab}&class=${encodeURIComponent(klass)}`}
             className={`ws-filter${classFilter === klass ? " active" : ""}`}
           >
             {klass}
           </Link>
         ))}
-        {!office ? (
-          <Link href="/portal/office-stock" className="ws-filter">
-            Office stock only
-          </Link>
-        ) : (
-          <Link href="/portal/catalog" className="ws-filter">
-            Full catalog
-          </Link>
-        )}
       </div>
 
-      {!products.length ? (
+      {!filtered.length ? (
         <EmptyState title="No products" body="No active SKUs match this filter." />
       ) : (
         <div className="ws-catalog-grid">
-          {products.map((product) => {
+          {filtered.map((product) => {
             const gate = isProductClass(product.productClass)
               ? canOrder(user.org.verificationTier, product.productClass, product.orderable)
               : { ok: false, reason: "Unknown class." };
+            const fav = favSet.has(product.sku);
             return (
               <article className="ws-product" key={product.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -102,6 +169,7 @@ export default async function CatalogPage({
                     <span className="ws-chip">{product.category || product.form || product.productClass}</span>
                     {product.rxRequired ? <StatusBadge tone="info">Rx</StatusBadge> : null}
                     {product.officeUse ? <StatusBadge tone="neutral">Office</StatusBadge> : null}
+                    {fav ? <StatusBadge tone="ok">Favorite</StatusBadge> : null}
                   </div>
                   <h3>{product.name}</h3>
                   <p className="muted">{product.description || "Formulary item"}</p>
@@ -134,15 +202,25 @@ export default async function CatalogPage({
                         </>
                       ) : null}
                       <button className="btn btn-accent" type="submit">
-                        Add to cart
+                        Add to order
                       </button>
                     </form>
                   ) : (
                     <p className="error">{product.holdReason || gate.reason}</p>
                   )}
-                  <Link href={`/portal/catalog/${product.sku}`} className="ws-text-link">
-                    View details
-                  </Link>
+                  <div className="ws-head-actions">
+                    <Link href={`/portal/catalog/${product.sku}`} className="ws-text-link">
+                      View details
+                    </Link>
+                    <form action={toggleRxFavorite}>
+                      <input type="hidden" name="sku" value={product.sku} />
+                      <input type="hidden" name="name" value={product.name} />
+                      <input type="hidden" name="next" value={`/portal/catalog?tab=${tab}`} />
+                      <button className="btn btn-ghost" type="submit">
+                        {fav ? "Unfavorite" : "Rx favorite"}
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </article>
             );

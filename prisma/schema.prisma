@@ -17,7 +17,14 @@ model Organization {
   referringAffiliateId String   @default("")
   assignedRep          String   @default("Alex Morgan")
   slug                 String   @unique
+  clinicCode           String   @default("")
   onboardingComplete   Boolean  @default(false)
+  hidePricingFromStaff Boolean  @default(false)
+  brandingJson         String   @default("{}")
+  notificationPrefsJson String  @default("{}")
+  specialty            String   @default("")
+  website              String   @default("")
+  phone                String   @default("")
   createdAt            DateTime @default(now())
   users                User[]
   orders               Order[]
@@ -27,6 +34,16 @@ model Organization {
   messages             Message[]
   locations            PracticeLocation[]
   settlements          Settlement[]
+  notifications        AppNotification[]
+  compoundRequests     CompoundRequest[]
+  forms                PracticeForm[]
+  rxFavorites          RxFavorite[]
+  telehealthVisits     TelehealthVisit[]
+  patientInvoices      PatientInvoice[]
+  paymentMethods       PaymentMethod[]
+  prescribeRequests    PrescribeRequest[]
+
+  @@index([clinicCode])
 }
 
 model PracticeLocation {
@@ -86,6 +103,8 @@ model PrescriberCredential {
   specialty        String   @default("")
   licenseCipher    String   @default("")
   deaCipher        String   @default("")
+  /// JSON array of { state, licenseNumber }
+  licensesJson     String   @default("[]")
   oigStatus        String   @default("pending_vendor")
   verificationTier Int      @default(0)
   checkedAt        DateTime @default(now())
@@ -487,4 +506,141 @@ model RefillRequest {
   note              String   @default("")
   status            String   @default("requested")
   createdAt         DateTime @default(now())
+}
+
+model AppNotification {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  userId    String       @default("")
+  kind      String
+  title     String
+  body      String       @default("")
+  href      String       @default("")
+  readAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([userId, readAt])
+}
+
+model CompoundRequest {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  requestedBy String       @default("")
+  name        String
+  strength    String       @default("")
+  form        String       @default("")
+  note        String       @default("")
+  status      String       @default("submitted")
+  createdAt   DateTime     @default(now())
+
+  @@index([orgId, status])
+}
+
+model PracticeForm {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  title       String
+  kind        String       @default("intake")
+  schemaJson  String       @default("[]")
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  submissions FormSubmission[]
+
+  @@index([orgId])
+}
+
+model FormSubmission {
+  id                String   @id @default(cuid())
+  formId            String
+  form              PracticeForm @relation(fields: [formId], references: [id])
+  clinicalPatientId String   @default("")
+  answersJson       String   @default("{}")
+  status            String   @default("submitted")
+  createdAt         DateTime @default(now())
+
+  @@index([formId])
+}
+
+model RxFavorite {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  userId    String       @default("")
+  sku       String
+  name      String
+  createdAt DateTime     @default(now())
+
+  @@unique([orgId, sku])
+  @@index([orgId])
+}
+
+model TelehealthVisit {
+  id                String       @id @default(cuid())
+  orgId             String
+  org               Organization @relation(fields: [orgId], references: [id])
+  providerUserId    String       @default("")
+  clinicalPatientId String       @default("")
+  patientName       String       @default("")
+  startsAt          DateTime
+  durationMin       Int          @default(30)
+  status            String       @default("scheduled")
+  notes             String       @default("")
+  meetingUrl        String       @default("")
+  createdAt         DateTime     @default(now())
+
+  @@index([orgId, startsAt])
+}
+
+model PatientInvoice {
+  id                String       @id @default(cuid())
+  orgId             String
+  org               Organization @relation(fields: [orgId], references: [id])
+  clinicalPatientId String       @default("")
+  patientName       String
+  patientEmail      String       @default("")
+  invoiceNumber     String       @unique
+  description       String       @default("")
+  amountCents       Int
+  status            String       @default("unpaid")
+  payToken          String       @unique @default(cuid())
+  paidAt            DateTime?
+  createdAt         DateTime     @default(now())
+
+  @@index([orgId, status])
+}
+
+model PaymentMethod {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id])
+  brand      String       @default("card")
+  last4      String
+  expMonth   Int
+  expYear    Int
+  label      String       @default("")
+  isDefault  Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+
+  @@index([orgId])
+}
+
+model PrescribeRequest {
+  id                String       @id @default(cuid())
+  orgId             String
+  org               Organization @relation(fields: [orgId], references: [id])
+  clinicalPatientId String       @default("")
+  patientName       String
+  productName       String
+  productSku        String       @default("")
+  note              String       @default("")
+  status            String       @default("pending")
+  orderId           String       @default("")
+  createdAt         DateTime     @default(now())
+
+  @@index([orgId, status])
 }

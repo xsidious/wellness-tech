@@ -7,53 +7,73 @@ import { tierLabel } from "@/lib/rules";
 
 function practiceGroups(
   billingOnly: boolean,
-  badges?: { refills?: number; messages?: number; unpaid?: number },
+  badges?: { refills?: number; messages?: number; unpaid?: number; scripts?: number; alerts?: number },
 ): PortalNavGroup[] {
   return [
     {
-      label: "Workspace",
+      label: "Overview",
       links: [
         { href: "/portal", label: "Dashboard", exact: true },
+        {
+          href: "/portal/notifications",
+          label: "Notifications",
+          badge: badges?.alerts || undefined,
+        },
+      ],
+    },
+    {
+      label: "Ordering",
+      links: [
+        { href: "/portal/catalog", label: "Marketplace" },
         { href: "/portal/orders", label: "Orders" },
         {
-          href: "/portal/invoices",
-          label: "Invoices",
-          badge: badges?.unpaid || undefined,
+          href: "/portal/script-requests",
+          label: "Script Requests",
+          badge: badges?.scripts || undefined,
         },
         {
           href: "/portal/refills",
           label: "Refills",
           badge: badges?.refills || undefined,
         },
+        { href: "/portal/cart", label: "Cart" },
       ],
     },
+    ...(billingOnly
+      ? []
+      : [
+          {
+            label: "Patients",
+            links: [
+              { href: "/portal/patients", label: "Patients" },
+              { href: "/portal/forms", label: "Forms" },
+            ],
+          },
+        ]),
     {
-      label: "Clinical",
+      label: "Practice",
       links: [
-        ...(billingOnly ? [] : [{ href: "/portal/patients", label: "Patients" }]),
-        { href: "/portal/practitioners", label: "Practitioners" },
+        { href: "/portal/team", label: "Team" },
+        { href: "/portal/telehealth", label: "Scheduling" },
+        { href: "/portal/invoices", label: "Wholesale invoices", badge: badges?.unpaid || undefined },
+        { href: "/portal/patient-invoices", label: "Patient invoices" },
+        { href: "/portal/practitioners", label: "Credentials" },
         { href: "/portal/pharmacies", label: "Pharmacies" },
       ],
     },
     {
-      label: "Commerce",
+      label: "Resources",
       links: [
-        { href: "/portal/catalog", label: "Catalog" },
+        { href: "/portal/resources", label: "Resources" },
+        { href: "/portal/education", label: "Education" },
         { href: "/portal/price-list", label: "Price list" },
-        { href: "/portal/office-stock", label: "Office stock" },
-        { href: "/portal/cart", label: "Cart" },
-      ],
-    },
-    {
-      label: "Operations",
-      links: [
         { href: "/portal/reports", label: "Reports" },
         {
           href: "/portal/messages",
           label: "Messages",
           badge: badges?.messages || undefined,
         },
-        { href: "/portal/education", label: "Education" },
+        { href: "/portal/support", label: "Support" },
         { href: "/portal/settings", label: "Settings" },
       ],
     },
@@ -147,7 +167,7 @@ export function PortalFrame({
   children: React.ReactNode;
   /** Force nav when an admin opens another workspace (e.g. /pharmacy). */
   workspace?: "admin" | "pharmacy" | "practice" | "affiliate";
-  badges?: { refills?: number; messages?: number; unpaid?: number };
+  badges?: { refills?: number; messages?: number; unpaid?: number; scripts?: number; alerts?: number };
 }) {
   const roles = rolesOf(user.roles);
   const admin = roles.includes("admin") && !roles.some((role) => ["owner", "prescriber", "staff"].includes(role));

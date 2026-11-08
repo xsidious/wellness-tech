@@ -156,6 +156,7 @@ export async function invitePatientPortal(formData: FormData) {
   }
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.wellnesstechdistribution.com").replace(/\/$/, "");
+  const claimUrl = `${appUrl}/claim-account?email=${encodeURIComponent(patient.email)}`;
   try {
     const { sendTransactionalEmail } = await import("@/lib/email");
     await sendTransactionalEmail({
@@ -166,15 +167,14 @@ export async function invitePatientPortal(formData: FormData) {
         "",
         `${user.org.legalName} invited you to view prescriptions, tracking, and refill requests online.`,
         "",
-        `Open your portal: ${appUrl}/login?next=/patient/portal`,
-        "",
-        "Use the email this message was sent to. Request a magic code or password reset if you do not have a password yet.",
+        `Activate your account: ${claimUrl}`,
+        `Or sign in / request a magic code: ${appUrl}/login?next=/patient/portal`,
       ].join("\n"),
       html: `<div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1a1a1a;max-width:520px">
         <p>Hi ${patient.fullName},</p>
         <p><strong>${user.org.legalName}</strong> invited you to view prescriptions, tracking, and refill requests online.</p>
-        <p><a href="${appUrl}/login?next=/patient/portal">Open your patient portal</a></p>
-        <p style="color:#555;font-size:14px">Use this email address to sign in. Request a magic code if you do not have a password yet.</p>
+        <p><a href="${claimUrl}">Activate your account</a></p>
+        <p style="color:#555;font-size:14px">Already activated? <a href="${appUrl}/login?next=/patient/portal">Sign in</a> or request a magic code on the login page.</p>
       </div>`,
     });
   } catch (error) {

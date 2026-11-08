@@ -76,7 +76,8 @@ export async function updateAffiliateW9(formData: FormData) {
   const user = await requireUser();
   if (!user.affiliate) throw new Error("Affiliate profile required");
   const status = String(formData.get("w9Status") || "").trim();
-  if (!["sandbox_received", "submitted", "verified", "rejected"].includes(status)) {
+  // Affiliates may mark submitted/rejected only — verified is ops-controlled.
+  if (!["sandbox_received", "submitted", "rejected"].includes(status)) {
     throw new Error("Invalid W-9 status");
   }
   await prisma.affiliateProfile.update({

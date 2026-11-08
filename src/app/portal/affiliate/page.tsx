@@ -106,12 +106,12 @@ export default async function AffiliatePortal({
         description="Mark when you have submitted a W-9 to Wellness Tech. Verified status is set by operations."
       >
         <form action={updateAffiliateW9} className="ws-message-form" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-          <select name="w9Status" defaultValue={user.affiliate.w9Status}>
+          <select
+            name="w9Status"
+            defaultValue={user.affiliate.w9Status === "verified" ? "submitted" : user.affiliate.w9Status}
+          >
             <option value="sandbox_received">Sandbox / not submitted</option>
             <option value="submitted">Submitted to Wellness Tech</option>
-            {user.affiliate.w9Status === "verified" ? (
-              <option value="verified">Verified</option>
-            ) : null}
             <option value="rejected">Needs correction</option>
           </select>
           <button className="btn btn-accent" type="submit">
