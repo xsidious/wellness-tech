@@ -206,6 +206,12 @@ export async function POST(request: Request) {
   const signatures = chart?.signatures || [];
   const intakePayload = chart?.intake?.payload || {};
   const therapy = chart?.therapy || {};
+  const partnerSite =
+    String(body.partnerSite || "kian-prive")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-|-$/g, "") || "kian-prive";
 
   const clinicalPatient = await prisma.clinicalPatient.upsert({
     where: {
@@ -227,7 +233,7 @@ export async function POST(request: Request) {
       addressJson: JSON.stringify(chart?.patient?.address || patient.address || {}),
       kianIntakeId: kianIntakeId || `order:${externalRef}`,
       kianReference: String(chart?.intake?.reference || "").trim(),
-      sourceSite: String(body.partnerSite || "kian-prive"),
+      sourceSite: partnerSite,
       intakeStatus: String(chart?.intake?.status || "").trim(),
       statusNote: String(chart?.intake?.statusNote || "").trim(),
       programsJson: JSON.stringify(programs),
@@ -245,7 +251,7 @@ export async function POST(request: Request) {
       medications: String(chart?.patient?.medications || "").trim(),
       addressJson: JSON.stringify(chart?.patient?.address || patient.address || {}),
       kianReference: String(chart?.intake?.reference || "").trim(),
-      sourceSite: String(body.partnerSite || "kian-prive"),
+      sourceSite: partnerSite,
       intakeStatus: String(chart?.intake?.status || "").trim(),
       statusNote: String(chart?.intake?.statusNote || "").trim(),
       programsJson: JSON.stringify(programs),
@@ -256,21 +262,32 @@ export async function POST(request: Request) {
     },
   });
 
+  const invoicePrefix =
+    partnerSite === "kian-prive"
+      ? "WT-KIAN"
+      : partnerSite === "threefold-strength"
+        ? "WT-TFS"
+        : partnerSite === "4everglow"
+          ? "WT-4EG"
+          : partnerSite === "facial-design"
+            ? "WT-FDS"
+            : `WT-${partnerSite.slice(0, 6).toUpperCase()}`;
+
   const order = await prisma.order.create({
     data: {
       orgId: org.id,
       placedById: user.id,
       clinicalPatientId: clinicalPatient.id,
-      invoiceNumber: `WT-KIAN-${String(count + 1).padStart(5, "0")}`,
+      invoiceNumber: `${invoicePrefix}-${String(count + 1).padStart(5, "0")}`,
       status: "submitted",
       paymentStatus: "paid_external",
       shippingFeeCents: shipping,
       subtotalCents: subtotal,
       totalCents: subtotal + shipping,
-      source: "kian-prive",
+      source: partnerSite,
       partnerExternalRef: externalRef,
       shippingMethod: body.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
-      notes: [body.notes || "", `Partner site: ${body.partnerSite || "kian-prive"}`, `Customer: ${email}`]
+      notes: [body.notes || "", `Partner site: ${partnerSite}`, `Customer: ${email}`]
         .filter(Boolean)
         .join("\n"),
       patientJson: packed.patientJson,
@@ -294,7 +311,7 @@ export async function POST(request: Request) {
 
   try {
     const { touchConnectedSiteOrder } = await import("@/lib/connected-sites");
-    await touchConnectedSiteOrder(String(body.partnerSite || "kian-prive"));
+    await touchConnectedSiteOrder(partnerSite);
   } catch {
     // Site monitoring is best-effort.
   }

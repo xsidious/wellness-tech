@@ -31,11 +31,26 @@ export type SiteRemoteMetrics = {
   intakesOpen?: number;
   intakesTotal?: number;
   bookings30d?: number;
+  submissionsOpen?: number;
+  submissionsTotal?: number;
   site?: string;
   environment?: string;
 };
 
-const DEFAULT_SITES = [
+type SeedSite = {
+  slug: string;
+  displayName: string;
+  kind: string;
+  baseUrl: string;
+  sourceKey: string;
+  statusWebhookPath: string;
+  overviewPath: string;
+  healthPath: string;
+  secretEnvKey: string;
+  notes: string;
+};
+
+const DEFAULT_SITES: SeedSite[] = [
   {
     slug: "kian-prive",
     displayName: "KIAN Privé",
@@ -46,9 +61,45 @@ const DEFAULT_SITES = [
     overviewPath: "/api/webhooks/wellness-tech-overview",
     healthPath: "/",
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
-    notes: "Consumer therapeutics storefront. Forwards paid Rx orders into WT partner API; receives fulfillment status webhooks.",
+    notes: "Consumer therapeutics storefront. Forwards paid Rx orders into WT; receives fulfillment status webhooks.",
   },
-] as const;
+  {
+    slug: "threefold-strength",
+    displayName: "Threefold Strength",
+    kind: "clinical",
+    baseUrl: process.env.THREEFOLD_APP_URL?.trim() || "https://threefoldstrength.com",
+    sourceKey: "threefold-strength",
+    statusWebhookPath: "/api/kian/webhook",
+    overviewPath: "/api/webhooks/wellness-tech-overview",
+    healthPath: "/",
+    secretEnvKey: "WT_PARTNER_ORDER_SECRET",
+    notes: "Partner clinic. Intakes → KIAN Privé; catalog/orders → Wellness Tech.",
+  },
+  {
+    slug: "4everglow",
+    displayName: "4everglow Wellness",
+    kind: "clinical",
+    baseUrl: process.env.FOREVERGLOW_APP_URL?.trim() || "https://4everglow.vercel.app",
+    sourceKey: "4everglow",
+    statusWebhookPath: "/api/kian/webhook",
+    overviewPath: "/api/webhooks/wellness-tech-overview",
+    healthPath: "/",
+    secretEnvKey: "WT_PARTNER_ORDER_SECRET",
+    notes: "Partner aesthetics/wellness clinic. Intakes → KIAN Privé; orders → Wellness Tech.",
+  },
+  {
+    slug: "facial-design",
+    displayName: "Facial Design Studio",
+    kind: "clinical",
+    baseUrl: process.env.FACIAL_DESIGN_APP_URL?.trim() || "https://facialdesignstudio.com",
+    sourceKey: "facial-design",
+    statusWebhookPath: "/api/kian/webhook",
+    overviewPath: "/api/webhooks/wellness-tech-overview",
+    healthPath: "/",
+    secretEnvKey: "WT_PARTNER_ORDER_SECRET",
+    notes: "Partner facial aesthetics clinic. Intakes → KIAN Privé; orders → Wellness Tech.",
+  },
+];
 
 export async function ensureConnectedSites() {
   const { org } = await ensureKianPartnerOrg();
