@@ -1,15 +1,22 @@
 import Link from "next/link";
 import { PageHeader, QuickLink, SectionCard } from "@/components/portal/Workspace";
 import { requireUser } from "@/lib/guard";
+import { addCoaDocument } from "@/lib/portal-ops-actions";
 import { prisma } from "@/lib/prisma";
 
-export default async function ResourcesPage() {
+export default async function ResourcesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ coa?: string }>;
+}) {
   const user = await requireUser();
-  const [teamCount, patientCount, location, pendingScripts] = await Promise.all([
+  const notices = await searchParams;
+  const [teamCount, patientCount, location, pendingScripts, coas] = await Promise.all([
     prisma.user.count({ where: { orgId: user.orgId } }),
     prisma.clinicalPatient.count({ where: { orgId: user.orgId } }),
     prisma.practiceLocation.findFirst({ where: { orgId: user.orgId } }),
     prisma.order.count({ where: { orgId: user.orgId, escriptStatus: "pending_signature" } }),
+    prisma.coaDocument.findMany({ where: { orgId: user.orgId }, orderBy: { createdAt: "desc" }, take: 50 }),
   ]);
 
   const checklist = [
@@ -31,12 +38,15 @@ export default async function ResourcesPage() {
       <PageHeader
         kicker="Resources"
         title="Practice resources"
-        lede="Launch checklist, education, CoA library pointers, peptide calculators, and patient handouts."
+        lede="Launch checklist, handouts, CoA library, peptide calculators, product directory, and FAQ."
       />
+      {notices.coa ? <p className="note">CoA document added.</p> : null}
 
       <div className="ws-quick-grid">
         <QuickLink href="/portal/education" title="Materials" body="Shareable decks and product education" />
         <QuickLink href="/portal/price-list" title="Product directory" body="Formulary pricing by class" />
+        <QuickLink href="/portal/resources/calculator" title="Peptide calculators" body="Reconstitution & dosing helper" />
+        <QuickLink href="/portal/resources/handouts" title="Patient handouts" body="Printable injection & storage guides" />
         <QuickLink href="/portal/catalog" title="Marketplace" body="503A / 503B / supplies ordering" />
         <QuickLink href="/portal/support" title="FAQ / Support" body="Relay assistant and live chat" />
       </div>
@@ -60,27 +70,69 @@ export default async function ResourcesPage() {
         </ol>
       </SectionCard>
 
-      <div className="ws-split">
-        <SectionCard title="Patient handouts">
-          <p className="muted">
-            Injection, storage, and what-to-expect handouts. Print or PDF with your practice name from Branding settings.
-          </p>
-          <ul>
-            <li>Subcutaneous injection basics</li>
-            <li>Cold-chain storage at home</li>
-            <li>What to expect in the first 2 weeks</li>
-          </ul>
-        </SectionCard>
-        <SectionCard title="CoA library & peptide calculators">
-          <p className="muted">
-            Certificates of analysis ship with pharmacy fulfillment packets. Use marketplace product detail pages for strength
-            and reconstitution guidance; advanced calculators live alongside education materials.
-          </p>
-          <Link className="btn btn-ghost" href="/portal/education">
-            Open education
-          </Link>
-        </SectionCard>
-      </div>
+      <SectionCard title="CoA library" description="Certificates of analysis by SKU / lot for your practice archive.">
+        <form action={addCoaDocument} className="ws-message-form" style={{ marginBottom: 16 }}>
+          <div className="ws-kv">
+            <label>
+              Title
+              <input name="title" required placeholder="Semaglutide 5mg CoA" />
+            </label>
+            <label>
+              SKU
+              <input name="sku" />
+            </label>
+            <label>
+              Lot #
+              <input name="lotNumber" />
+            </label>
+            <label>
+              Document URL
+              <input name="url" placeholder="https://…" />
+            </label>
+          </div>
+          <label>
+            Notes
+            <input name="notes" />
+          </label>
+          <button className="btn btn-accent" type="submit">
+            Add CoA
+          </button>
+        </form>
+        {coas.length ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>SKU</th>
+                  <th>Lot</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coas.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.title}</td>
+                    <td>{c.sku || "—"}</td>
+                    <td>{c.lotNumber || "—"}</td>
+                    <td>
+                      {c.url ? (
+                        <a className="ws-text-link" href={c.url} target="_blank" rel="noreferrer">
+                          Open
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="muted">No CoA documents uploaded yet.</p>
+        )}
+      </SectionCard>
     </div>
   );
 }

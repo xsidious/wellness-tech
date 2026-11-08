@@ -57,6 +57,20 @@ export async function ingestWebhook(body: string, signature: string) {
   await prisma.order.update({ where: { id: order.id }, data: { status } });
   await prisma.orderLine.updateMany({ where: { orderId: order.id }, data: { lineStatus: status } });
 
+  try {
+    const { notifyOrg } = await import("@/lib/notifications");
+    await notifyOrg({
+      orgId: order.orgId,
+      kind: payload.type,
+      title: `Order ${order.invoiceNumber} · ${status}`,
+      body: payload.reason || `Fulfillment status updated to ${status}.`,
+      href: `/portal/orders/${order.id}`,
+      email: true,
+    });
+  } catch (error) {
+    console.error("order status notification failed", error);
+  }
+
   if (payload.type === "order.delivered" && order.org.referringAffiliateId) {
     const affiliate = await prisma.affiliateProfile.findUnique({ where: { userId: order.org.referringAffiliateId } });
     if (affiliate) {

@@ -1,9 +1,9 @@
+import Link from "next/link";
 import {
   EmptyState,
   PageHeader,
   SectionCard,
   StatusBadge,
-  statusTone,
 } from "@/components/portal/Workspace";
 import { requireUser } from "@/lib/guard";
 import { createPracticeForm } from "@/lib/portal-ops-actions";
@@ -21,15 +21,16 @@ export default async function FormsPage({
     orderBy: { updatedAt: "desc" },
     include: { _count: { select: { submissions: true } } },
   });
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.wellnesstechdistribution.com").replace(/\/$/, "");
 
   return (
     <div className="ws-stack">
       <PageHeader
         kicker="Patients"
         title="Forms"
-        lede="Intake, consent, and follow-up forms for your clinic. Share links and track submissions."
+        lede="Manage every intake, consent, and follow-up form. Share, edit questions, and track submissions."
       />
-      {notices.created ? <p className="note">Form created with required clinical questions.</p> : null}
+      {notices.created ? <p className="note">Form created — open it to edit questions and copy the share link.</p> : null}
 
       <SectionCard title="New form">
         <form action={createPracticeForm} className="ws-message-form" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
@@ -54,8 +55,9 @@ export default async function FormsPage({
                   <th>Title</th>
                   <th>Kind</th>
                   <th>Submissions</th>
+                  <th>Share link</th>
                   <th>Status</th>
-                  <th>Updated</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -66,10 +68,17 @@ export default async function FormsPage({
                     </td>
                     <td>{form.kind}</td>
                     <td>{form._count.submissions}</td>
+                    <td className="muted" style={{ wordBreak: "break-all" }}>
+                      {appUrl}/f/{form.id}
+                    </td>
                     <td>
                       <StatusBadge tone={form.active ? "ok" : "neutral"}>{form.active ? "active" : "off"}</StatusBadge>
                     </td>
-                    <td className="muted">{form.updatedAt.toLocaleDateString()}</td>
+                    <td>
+                      <Link className="btn btn-ghost" href={`/portal/forms/${form.id}`}>
+                        Edit
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>

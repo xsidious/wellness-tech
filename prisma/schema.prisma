@@ -25,6 +25,12 @@ model Organization {
   specialty            String   @default("")
   website              String   @default("")
   phone                String   @default("")
+  customDomain         String   @default("")
+  twilioAccountSid     String   @default("")
+  twilioAuthToken      String   @default("")
+  twilioPhone          String   @default("")
+  twilioEnabled        Boolean  @default(false)
+  workingHoursJson     String   @default("{}")
   createdAt            DateTime @default(now())
   users                User[]
   orders               Order[]
@@ -42,6 +48,8 @@ model Organization {
   patientInvoices      PatientInvoice[]
   paymentMethods       PaymentMethod[]
   prescribeRequests    PrescribeRequest[]
+  coaDocuments         CoaDocument[]
+  smsMessages          SmsMessage[]
 
   @@index([clinicCode])
 }
@@ -586,6 +594,8 @@ model TelehealthVisit {
   providerUserId    String       @default("")
   clinicalPatientId String       @default("")
   patientName       String       @default("")
+  /// scheduled | blocked | instant
+  kind              String       @default("scheduled")
   startsAt          DateTime
   durationMin       Int          @default(30)
   status            String       @default("scheduled")
@@ -594,6 +604,35 @@ model TelehealthVisit {
   createdAt         DateTime     @default(now())
 
   @@index([orgId, startsAt])
+}
+
+model CoaDocument {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  title       String
+  sku         String       @default("")
+  lotNumber   String       @default("")
+  url         String       @default("")
+  notes       String       @default("")
+  createdAt   DateTime     @default(now())
+
+  @@index([orgId])
+}
+
+model SmsMessage {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  direction   String       @default("outbound")
+  fromPhone   String       @default("")
+  toPhone     String       @default("")
+  body        String
+  status      String       @default("logged")
+  readAt      DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([orgId, createdAt])
 }
 
 model PatientInvoice {

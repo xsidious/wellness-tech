@@ -641,6 +641,15 @@ export async function placeOrder(formData: FormData) {
   }
 
   await audit({ actorId: user.id, action: "order.placed", object: order.invoiceNumber, after: `ship:${shipDestination};escript:${order.escriptStatus}` });
+  const { notifyOrg } = await import("@/lib/notifications");
+  await notifyOrg({
+    orgId: user.orgId,
+    kind: "order.placed",
+    title: `Order ${order.invoiceNumber} placed`,
+    body: order.escriptStatus === "pending_signature" ? "Awaiting eScript signature." : `Status: ${order.status}`,
+    href: `/portal/orders/${order.id}`,
+    email: true,
+  });
   redirect(`/portal/orders/${order.id}`);
 }
 

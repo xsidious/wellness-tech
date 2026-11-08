@@ -109,7 +109,10 @@ export default async function PatientInvoicesPage({
                     <td>
                       <StatusBadge tone={statusTone(inv.status)}>{inv.status}</StatusBadge>
                     </td>
-                    <td>
+                    <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <a className="btn btn-ghost" href={`/pay/patient/${inv.payToken}`} target="_blank" rel="noreferrer">
+                        Pay link
+                      </a>
                       {inv.status !== "paid" ? (
                         <form action={markPatientInvoicePaid}>
                           <input type="hidden" name="id" value={inv.id} />
@@ -117,9 +120,7 @@ export default async function PatientInvoicesPage({
                             Mark paid
                           </button>
                         </form>
-                      ) : (
-                        "—"
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}

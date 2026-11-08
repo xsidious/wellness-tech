@@ -1,12 +1,12 @@
 import { EmptyState, PageHeader, SectionCard } from "@/components/portal/Workspace";
 import { requireUser } from "@/lib/guard";
-import { sendSupportMessage } from "@/lib/portal-ops-actions";
+import { askRelayBot, sendSupportMessage } from "@/lib/portal-ops-actions";
 import { prisma } from "@/lib/prisma";
 
 export default async function SupportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string; bot?: string }>;
 }) {
   const user = await requireUser();
   const q = await searchParams;
@@ -21,9 +21,10 @@ export default async function SupportPage({
       <PageHeader
         kicker="Help"
         title="Support & Relay assistant"
-        lede={`Live chat with ${user.org.assignedRep}, plus an on-page assistant for portal how-tos.`}
+        lede={`Live chat with ${user.org.assignedRep}, plus Relay Bot for portal how-tos.`}
       />
       {q.sent ? <p className="note">Message sent to your Wellness Tech rep.</p> : null}
+      {q.bot ? <p className="note">Relay Bot answered below.</p> : null}
       {q.error ? <p className="error">{q.error}</p> : null}
 
       <div className="ws-split">
@@ -39,27 +40,21 @@ export default async function SupportPage({
           </form>
         </SectionCard>
 
-        <SectionCard title="Relay Bot" description="Quick answers from the launch checklist and portal docs.">
-          <p className="muted">
-            Ask about ordering, eScripts, refills, team invites, or patient portal. For account-specific PHI or payment issues, use live chat.
-          </p>
-          <ul>
-            <li>
-              <a className="ws-text-link" href="/portal/resources">
-                Open launch checklist
-              </a>
-            </li>
-            <li>
-              <a className="ws-text-link" href="/portal/script-requests">
-                Script requests queue
-              </a>
-            </li>
-            <li>
-              <a className="ws-text-link" href="/portal/team">
-                Invite team
-              </a>
-            </li>
-          </ul>
+        <SectionCard title="Relay Bot" description="Ask about ordering, eScripts, refills, team, telehealth, invoices, branding.">
+          <form action={askRelayBot} className="ws-message-form">
+            <label>
+              Ask Relay
+              <textarea
+                name="body"
+                rows={5}
+                required
+                placeholder="How do I invite a prescriber? Where are script requests?"
+              />
+            </label>
+            <button className="btn btn-accent" type="submit">
+              Ask Relay Bot
+            </button>
+          </form>
         </SectionCard>
       </div>
 
@@ -77,7 +72,7 @@ export default async function SupportPage({
             ))}
           </ul>
         ) : (
-          <EmptyState title="No support messages yet" body="Start a thread when you need help." />
+          <EmptyState title="No support messages yet" body="Start a thread or ask Relay Bot." />
         )}
       </SectionCard>
     </div>

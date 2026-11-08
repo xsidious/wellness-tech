@@ -9,6 +9,8 @@ import {
   saveBranding,
   saveNotificationPrefs,
   savePracticeProfile,
+  saveTwilioSettings,
+  sendPracticeSms,
 } from "@/lib/portal-ops-actions";
 import { prisma } from "@/lib/prisma";
 import { tierLabel } from "@/lib/rules";
@@ -24,19 +26,21 @@ function parseJson<T>(raw: string, fallback: T): T {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; tab?: string }>;
+  searchParams: Promise<{ saved?: string; tab?: string; sms?: string }>;
 }) {
   const user = await requireUser();
   const roles = rolesOf(user.roles);
-  const { saved, tab } = await searchParams;
+  const { saved, tab, sms } = await searchParams;
   const active = tab || "account";
   const clinicCode = await ensureClinicCode();
-  const [credential, teamCount, locations, team, cards] = await Promise.all([
+  const [credential, teamCount, locations, team, cards, smsMessages, org] = await Promise.all([
     prisma.prescriberCredential.findUnique({ where: { userId: user.id } }),
     prisma.user.count({ where: { orgId: user.orgId } }),
     prisma.practiceLocation.findMany({ where: { orgId: user.orgId }, orderBy: { createdAt: "asc" } }),
     prisma.user.findMany({ where: { orgId: user.orgId }, orderBy: { createdAt: "asc" }, take: 20 }),
     prisma.paymentMethod.findMany({ where: { orgId: user.orgId }, orderBy: { createdAt: "desc" } }),
+    prisma.smsMessage.findMany({ where: { orgId: user.orgId }, orderBy: { createdAt: "desc" }, take: 40 }),
+    prisma.organization.findUnique({ where: { id: user.orgId } }),
   ]);
   const branding = parseJson<Record<string, string | boolean>>(user.org.brandingJson || "{}", {});
   const prefs = parseJson<Record<string, boolean>>(user.org.notificationPrefsJson || "{}", {
@@ -55,6 +59,7 @@ export default async function SettingsPage({
     { id: "prescribers", label: "Prescribers" },
     { id: "billing", label: "Billing" },
     { id: "branding", label: "Branding" },
+    { id: "texts", label: "Texts & calls" },
   ];
 
   return (
@@ -62,9 +67,12 @@ export default async function SettingsPage({
       <PageHeader
         kicker="Account"
         title="Settings"
-        lede="Profile, locations, notifications, cards on file, and white-label branding."
+        lede="Profile, locations, notifications, cards on file, white-label branding, and Twilio SMS."
       />
       {saved ? <p className="note">Settings saved.</p> : null}
+      {sms === "sent" ? <p className="note">SMS sent via Twilio.</p> : null}
+      {sms === "logged" ? <p className="note">SMS logged (Twilio not enabled — message saved to inbox).</p> : null}
+      {sms === "failed" ? <p className="error">Twilio send failed — message still logged.</p> : null}
 
       <div className="ws-filter-row">
         {tabs.map((t) => (
@@ -313,7 +321,7 @@ export default async function SettingsPage({
       ) : null}
 
       {active === "branding" ? (
-        <SectionCard title="White-label branding" description="Customize how the portal looks for your organization.">
+        <SectionCard title="White-label branding" description="Colors and display name apply live across the practice portal shell when active.">
           <form action={saveBranding} className="ws-message-form">
             <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input type="checkbox" name="active" defaultChecked={Boolean(branding.active)} />
@@ -348,12 +356,103 @@ export default async function SettingsPage({
                 Support phone
                 <input name="supportPhone" defaultValue={String(branding.supportPhone || "")} />
               </label>
+              <label>
+                Custom domain
+                <input
+                  name="customDomain"
+                  placeholder="portal.yourpractice.com"
+                  defaultValue={String(branding.customDomain || "")}
+                />
+              </label>
             </div>
+            <p className="muted">
+              Custom domain is stored for ops / DNS checklist. Point CNAME to this app host, then ask Wellness Tech to attach
+              it on Vercel — we do not auto-move domains.
+            </p>
             <button className="btn btn-accent" type="submit">
               Save branding
             </button>
           </form>
         </SectionCard>
+      ) : null}
+
+      {active === "texts" ? (
+        <>
+          <SectionCard
+            title="Twilio SMS"
+            description="Connect your Twilio account to text patients from the practice portal (same pattern as Eventide Texts & calls)."
+          >
+            <form action={saveTwilioSettings} className="ws-message-form">
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" name="twilioEnabled" defaultChecked={Boolean(org?.twilioEnabled)} />
+                Enable outbound SMS
+              </label>
+              <div className="ws-kv">
+                <label>
+                  Account SID
+                  <input name="twilioAccountSid" defaultValue={org?.twilioAccountSid || ""} autoComplete="off" />
+                </label>
+                <label>
+                  Auth token
+                  <input
+                    name="twilioAuthToken"
+                    type="password"
+                    defaultValue={org?.twilioAuthToken || ""}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  From phone (E.164)
+                  <input name="twilioPhone" placeholder="+1…" defaultValue={org?.twilioPhone || ""} />
+                </label>
+              </div>
+              <button className="btn btn-accent" type="submit">
+                Save Twilio settings
+              </button>
+            </form>
+          </SectionCard>
+
+          <SectionCard title="Send a text">
+            <form action={sendPracticeSms} className="ws-message-form">
+              <div className="ws-kv">
+                <label>
+                  To phone
+                  <input name="toPhone" placeholder="+1…" required />
+                </label>
+              </div>
+              <label>
+                Message
+                <textarea name="body" rows={3} required maxLength={320} />
+              </label>
+              <button className="btn btn-accent" type="submit">
+                Send SMS
+              </button>
+            </form>
+          </SectionCard>
+
+          <SectionCard title="SMS inbox / log">
+            {smsMessages.length ? (
+              <ul className="ws-message-list">
+                {smsMessages.map((m) => (
+                  <li key={m.id}>
+                    <div className="ws-message-meta">
+                      <b>
+                        {m.direction} · {m.status}
+                      </b>
+                      <span className="muted">{m.createdAt.toLocaleString()}</span>
+                    </div>
+                    <p className="muted">
+                      {m.fromPhone} → {m.toPhone}
+                    </p>
+                    <p>{m.body}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No SMS yet.</p>
+            )}
+          </SectionCard>
+        </>
       ) : null}
     </div>
   );

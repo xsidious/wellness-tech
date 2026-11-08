@@ -57,6 +57,7 @@ function practiceGroups(
         { href: "/portal/telehealth", label: "Scheduling" },
         { href: "/portal/invoices", label: "Wholesale invoices", badge: badges?.unpaid || undefined },
         { href: "/portal/patient-invoices", label: "Patient invoices" },
+        { href: "/portal/settings?tab=texts", label: "Texts & calls" },
         { href: "/portal/practitioners", label: "Credentials" },
         { href: "/portal/pharmacies", label: "Pharmacies" },
       ],
@@ -65,6 +66,8 @@ function practiceGroups(
       label: "Resources",
       links: [
         { href: "/portal/resources", label: "Resources" },
+        { href: "/portal/resources/calculator", label: "Calculators" },
+        { href: "/portal/resources/handouts", label: "Handouts" },
         { href: "/portal/education", label: "Education" },
         { href: "/portal/price-list", label: "Price list" },
         { href: "/portal/reports", label: "Reports" },
@@ -156,6 +159,7 @@ export function PortalFrame({
   children,
   workspace,
   badges,
+  brandTagline,
 }: {
   user: {
     id?: string;
@@ -168,6 +172,7 @@ export function PortalFrame({
   /** Force nav when an admin opens another workspace (e.g. /pharmacy). */
   workspace?: "admin" | "pharmacy" | "practice" | "affiliate";
   badges?: { refills?: number; messages?: number; unpaid?: number; scripts?: number; alerts?: number };
+  brandTagline?: string;
 }) {
   const roles = rolesOf(user.roles);
   const admin = roles.includes("admin") && !roles.some((role) => ["owner", "prescriber", "staff"].includes(role));
@@ -202,6 +207,7 @@ export function PortalFrame({
           </Link>
           <div className="side-meta">
             <strong>{user.org.legalName}</strong>
+            {brandTagline ? <span>{brandTagline}</span> : null}
             <span>{sideLabel}</span>
             {mode === "practice" ? <span>Rep · {user.org.assignedRep}</span> : null}
             <span className="side-user">{user.name}</span>

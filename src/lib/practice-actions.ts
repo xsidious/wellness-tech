@@ -325,8 +325,18 @@ export async function signEscript(formData: FormData) {
     after: signed.data.contentHash,
     ip: meta.ip,
   });
+  const { notifyOrg } = await import("@/lib/notifications");
+  await notifyOrg({
+    orgId: user.orgId,
+    kind: "order.script_signed",
+    title: `eScript signed · ${order.invoiceNumber}`,
+    body: "Prescription released for pharmacy fulfillment.",
+    href: `/portal/orders/${order.id}`,
+    email: true,
+  });
   revalidatePath(`/portal/orders/${order.id}`);
   revalidatePath("/admin/prescriptions");
+  revalidatePath("/portal/script-requests");
   redirect(`/portal/orders/${order.id}/escript`);
 }
 

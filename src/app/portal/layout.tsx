@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { PortalFrame } from "@/components/PortalFrame";
@@ -60,9 +61,46 @@ export default async function PortalLayout({ children }: { children: React.React
     };
   }
 
+  const branding = (() => {
+    try {
+      return JSON.parse(user.org.brandingJson || "{}") as {
+        active?: boolean;
+        displayName?: string;
+        tagline?: string;
+        primary?: string;
+        secondary?: string;
+        accent?: string;
+        customDomain?: string;
+      };
+    } catch {
+      return {};
+    }
+  })();
+  const brandActive = Boolean(branding.active);
+  const brandStyle: CSSProperties | undefined = brandActive
+    ? ({
+        ["--brand"]: String(branding.primary || "#184868"),
+        ["--brand-mid"]: String(branding.secondary || "#245a78"),
+        ["--brand-dark"]: String(branding.primary || "#0f2d42"),
+        ["--accent"]: String(branding.accent || branding.primary || "#c4a574"),
+      } as CSSProperties)
+    : undefined;
+
   return (
-    <PortalFrame user={user} badges={badges}>
-      {children}
-    </PortalFrame>
+    <div style={brandStyle} data-branded={brandActive ? "1" : "0"}>
+      <PortalFrame
+        user={{
+          ...user,
+          org: {
+            ...user.org,
+            legalName: brandActive && branding.displayName ? String(branding.displayName) : user.org.legalName,
+          },
+        }}
+        badges={badges}
+        brandTagline={brandActive ? String(branding.tagline || "") : undefined}
+      >
+        {children}
+      </PortalFrame>
+    </div>
   );
 }
