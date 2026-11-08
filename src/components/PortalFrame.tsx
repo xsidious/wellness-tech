@@ -115,6 +115,7 @@ const adminGroups: PortalNavGroup[] = [
   {
     label: "System",
     links: [
+      { href: "/admin/sites", label: "Connected Sites" },
       { href: "/admin/messages", label: "Messages" },
       { href: "/admin/audit", label: "Audit log" },
       { href: "/admin/migration", label: "Migration" },

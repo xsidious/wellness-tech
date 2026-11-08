@@ -50,8 +50,40 @@ model Organization {
   prescribeRequests    PrescribeRequest[]
   coaDocuments         CoaDocument[]
   smsMessages          SmsMessage[]
+  connectedSites       ConnectedSite[]
 
   @@index([clinicCode])
+}
+
+/** External websites / apps that push orders into Wellness Tech (KIAN Privé, future storefronts). */
+model ConnectedSite {
+  id                 String        @id @default(cuid())
+  slug               String        @unique
+  displayName        String
+  kind               String        @default("storefront")
+  baseUrl            String        @default("")
+  sourceKey          String        @default("")
+  status             String        @default("active")
+  orgId              String?
+  org                Organization? @relation(fields: [orgId], references: [id])
+  statusWebhookPath  String        @default("/api/webhooks/wellness-tech-order")
+  overviewPath       String        @default("/api/webhooks/wellness-tech-overview")
+  healthPath         String        @default("/")
+  secretEnvKey       String        @default("WT_PARTNER_ORDER_SECRET")
+  notes              String        @default("")
+  lastOrderAt        DateTime?
+  lastWebhookAt      DateTime?
+  lastWebhookOk      Boolean       @default(true)
+  lastHealthCheckAt  DateTime?
+  lastHealthOk       Boolean       @default(false)
+  lastHealthDetail   String        @default("")
+  localMetricsJson   String        @default("{}")
+  remoteMetricsJson  String        @default("{}")
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([status])
+  @@index([sourceKey])
 }
 
 model PracticeLocation {

@@ -140,6 +140,7 @@ export default async function AdminHome() {
             <QuickLink href="/admin/reports" title="Reports" body="Spend, SLA, payouts" />
             <QuickLink href="/admin/refills" title="Refills" body={`${dueRefills} due now`} />
             <QuickLink href="/admin/products" title="Catalog" body="Formulary sync" />
+            <QuickLink href="/admin/sites" title="Connected sites" body="KIAN + partner websites" />
             <QuickLink href="/admin/audit" title="Audit log" body="Access and changes" />
           </div>
         </SectionCard>

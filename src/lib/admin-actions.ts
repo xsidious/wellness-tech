@@ -167,3 +167,84 @@ export async function closeSettlement(formData: FormData) {
   revalidatePath("/admin/settlements");
   revalidatePath(`/admin/settlements/${id}`);
 }
+
+export async function upsertConnectedSite(formData: FormData) {
+  const user = await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const slug = String(formData.get("slug") || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const displayName = String(formData.get("displayName") || "").trim();
+  if (!slug || !displayName) throw new Error("Slug and display name required");
+
+  const data = {
+    slug,
+    displayName,
+    kind: String(formData.get("kind") || "storefront").trim() || "storefront",
+    baseUrl: String(formData.get("baseUrl") || "").trim().replace(/\/$/, ""),
+    sourceKey: String(formData.get("sourceKey") || slug).trim() || slug,
+    status: String(formData.get("status") || "active").trim() || "active",
+    statusWebhookPath: String(formData.get("statusWebhookPath") || "/api/webhooks/wellness-tech-order").trim(),
+    overviewPath: String(formData.get("overviewPath") || "/api/webhooks/wellness-tech-overview").trim(),
+    healthPath: String(formData.get("healthPath") || "/").trim() || "/",
+    secretEnvKey: String(formData.get("secretEnvKey") || "WT_PARTNER_ORDER_SECRET").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+  };
+
+  const site = id
+    ? await prisma.connectedSite.update({ where: { id }, data })
+    : await prisma.connectedSite.create({ data });
+
+  await audit({
+    actorId: user.id,
+    action: id ? "connected_site.update" : "connected_site.create",
+    object: `site:${site.id}`,
+    after: site.slug,
+  });
+
+  const { refreshConnectedSite } = await import("@/lib/connected-sites");
+  await refreshConnectedSite(site.id).catch(() => null);
+
+  revalidatePath("/admin/sites");
+  revalidatePath(`/admin/sites/${site.id}`);
+  revalidatePath("/admin");
+  redirect(`/admin/sites/${site.id}`);
+}
+
+export async function setConnectedSiteStatus(formData: FormData) {
+  const user = await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const status = String(formData.get("status") || "active").trim();
+  await prisma.connectedSite.update({ where: { id }, data: { status } });
+  await audit({ actorId: user.id, action: "connected_site.status", object: `site:${id}`, after: status });
+  revalidatePath("/admin/sites");
+  revalidatePath(`/admin/sites/${id}`);
+}
+
+export async function refreshConnectedSiteAction(formData: FormData) {
+  const user = await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const { refreshConnectedSite } = await import("@/lib/connected-sites");
+  await refreshConnectedSite(id);
+  await audit({ actorId: user.id, action: "connected_site.refresh", object: `site:${id}` });
+  revalidatePath("/admin/sites");
+  revalidatePath(`/admin/sites/${id}`);
+  redirect(`/admin/sites/${id}?refreshed=1`);
+}
+
+export async function refreshAllConnectedSitesAction() {
+  const user = await requireAdmin();
+  const { ensureConnectedSites, refreshConnectedSite } = await import("@/lib/connected-sites");
+  const sites = await ensureConnectedSites();
+  for (const site of sites) {
+    await refreshConnectedSite(site.id).catch((error) => {
+      console.error("site refresh failed", site.slug, error);
+    });
+  }
+  await audit({ actorId: user.id, action: "connected_site.refresh_all", object: `sites:${sites.length}` });
+  revalidatePath("/admin/sites");
+  revalidatePath("/admin");
+  redirect("/admin/sites?refreshed=1");
+}

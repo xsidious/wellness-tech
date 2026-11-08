@@ -293,6 +293,13 @@ export async function POST(request: Request) {
   });
 
   try {
+    const { touchConnectedSiteOrder } = await import("@/lib/connected-sites");
+    await touchConnectedSiteOrder(String(body.partnerSite || "kian-prive"));
+  } catch {
+    // Site monitoring is best-effort.
+  }
+
+  try {
     const rxcoreOrderId = await openRxcoreOrder({
       orderId: order.id,
       lines: order.lines

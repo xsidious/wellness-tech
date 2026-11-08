@@ -514,10 +514,11 @@ export async function notifyKianStatus(payload: {
   reason?: string;
 }) {
   const url = process.env.KIAN_STATUS_WEBHOOK_URL?.trim();
-  const secret = process.env.KIAN_PARTNER_SECRET?.trim();
+  const secret = process.env.KIAN_PARTNER_SECRET?.trim() || process.env.WT_PARTNER_ORDER_SECRET?.trim();
   if (!url || !secret || !payload.externalRef) return;
+  let ok = false;
   try {
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -526,8 +527,15 @@ export async function notifyKianStatus(payload: {
       body: JSON.stringify(payload),
       cache: "no-store",
     });
+    ok = res.ok;
   } catch {
-    // Status callbacks are best-effort.
+    ok = false;
+  }
+  try {
+    const { touchConnectedSiteWebhook } = await import("@/lib/connected-sites");
+    await touchConnectedSiteWebhook("kian-prive", ok);
+  } catch {
+    // Monitoring updates are best-effort.
   }
 }
 
