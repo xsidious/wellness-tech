@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { createHash } from "crypto";
 import { equipmentCatalog, equipmentHoldReason } from "../src/lib/equipment-catalog";
 import { exosomeCatalog, exosomeHoldReason, exosomeUse } from "../src/lib/exosome-catalog";
+import { prescribeUsaPensCatalog } from "../src/lib/prescribeusa-pens-catalog";
 
 const prisma = new PrismaClient();
 const pin = bcrypt.hashSync("246810", 8);
@@ -172,6 +173,22 @@ async function main() {
         orderable: false,
         holdReason: exosomeHoldReason,
         description: `${exosomeUse(line.category)}. ${line.category}. ${line.size}. Unit price is from the order form. Supplier payout is not set yet.`,
+      })),
+      ...prescribeUsaPensCatalog.map((line) => ({
+        sku: line.sku,
+        rxcoreFormularyId: `pusa-${line.sku.toLowerCase()}`,
+        name: line.name,
+        productClass: "503A",
+        category: line.category,
+        form: "Pre-Filled Injectable Pen",
+        strength: line.strength,
+        size: line.size,
+        storage: "refrigerated",
+        rxRequired: true,
+        priceCents: line.priceCents,
+        orderable: true,
+        holdReason: "",
+        description: `${line.description} Source: PrescribeUSA.`,
       })),
       ...equipmentCatalog.map((line) => ({
         sku: line.sku,
