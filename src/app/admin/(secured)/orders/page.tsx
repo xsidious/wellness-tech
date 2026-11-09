@@ -52,6 +52,11 @@ export default async function AdminOrdersPage({
         kicker="Fulfillment"
         title="Orders"
         lede="Payment, eScript, pharmacy routing, and tracking — exceptions surface here for retry."
+        actions={
+          <Link className="btn btn-accent" href="/admin/orders/new">
+            Create order
+          </Link>
+        }
       />
 
       <SectionCard title="Filter">

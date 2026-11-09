@@ -66,6 +66,12 @@ export function canOrder(
   return { ok: true as const };
 }
 
+/** Admin order desk — every active SKU is available, including held classes. */
+export function canAdminOrder(active: boolean) {
+  if (!active) return { ok: false as const, reason: "Inactive SKU." };
+  return { ok: true as const };
+}
+
 export function commissionEligible(productClass: ProductClass) {
   return productClass === "device" || productClass === "supply";
 }

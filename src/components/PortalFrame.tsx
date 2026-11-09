@@ -89,6 +89,7 @@ const adminGroups: PortalNavGroup[] = [
     links: [
       { href: "/admin", label: "Dashboard", exact: true },
       { href: "/admin/orders", label: "Orders" },
+      { href: "/admin/orders/new", label: "Create order" },
       { href: "/admin/prescriptions", label: "Prescriptions" },
       { href: "/admin/practices", label: "Practices" },
       { href: "/admin/pharmacies", label: "Pharmacies" },

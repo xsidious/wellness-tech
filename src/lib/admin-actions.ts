@@ -248,3 +248,228 @@ export async function refreshAllConnectedSitesAction() {
   revalidatePath("/admin");
   redirect("/admin/sites?refreshed=1");
 }
+
+type AdminOrderLineInput = {
+  productId: string;
+  qty: number;
+  unitPriceCents?: number;
+  patientInitials?: string;
+  sig?: string;
+  daysSupply?: number;
+};
+
+/** Admin desk: place an order for any practice/patient with the full catalog. */
+export async function placeAdminOrder(formData: FormData) {
+  const admin = await requireAdmin();
+  const { canAdminOrder, fulfillmentGroups, isProductClass, requiresEscript, shippingCents, routeSource } =
+    await import("@/lib/rules");
+  const { ensurePharmacyNetwork } = await import("@/lib/ensure-pharmacies");
+  const { openRxcoreOrder } = await import("@/lib/rxcore");
+  const { ensureKianPartnerOrg } = await import("@/lib/partner-org");
+
+  let orgId = String(formData.get("orgId") || "").trim();
+  const clinicalPatientId = String(formData.get("clinicalPatientId") || "").trim();
+  const fullName = String(formData.get("fullName") || "").trim();
+  const email = String(formData.get("email") || "")
+    .trim()
+    .toLowerCase();
+  const phone = String(formData.get("phone") || "").trim();
+  const dateOfBirth = String(formData.get("dateOfBirth") || "").trim();
+  const shipDestination =
+    String(formData.get("shipDestination") || "PRACTICE").toUpperCase() === "PATIENT" ? "PATIENT" : "PRACTICE";
+  const paymentStatus = String(formData.get("paymentStatus") || "invoiced").trim() || "invoiced";
+  const notes = String(formData.get("notes") || "").trim();
+  const forwardPharmacy = formData.get("forwardPharmacy") === "1" || formData.get("forwardPharmacy") === "on";
+
+  let lines: AdminOrderLineInput[] = [];
+  try {
+    lines = JSON.parse(String(formData.get("lines") || "[]")) as AdminOrderLineInput[];
+  } catch {
+    redirect("/admin/orders/new?error=Invalid+line+items");
+  }
+  lines = lines
+    .map((line) => ({
+      productId: String(line.productId || "").trim(),
+      qty: Math.max(1, Number(line.qty) || 1),
+      unitPriceCents: line.unitPriceCents != null ? Math.round(Number(line.unitPriceCents)) : undefined,
+      patientInitials: String(line.patientInitials || "").trim(),
+      sig: String(line.sig || "").trim(),
+      daysSupply: Math.max(0, Number(line.daysSupply) || 0),
+    }))
+    .filter((line) => line.productId);
+
+  if (!lines.length) redirect("/admin/orders/new?error=Add+at+least+one+product");
+  if (!email.includes("@")) redirect("/admin/orders/new?error=Valid+email+required");
+  if (!fullName && !clinicalPatientId) redirect("/admin/orders/new?error=Patient+name+required");
+
+  if (!orgId) {
+    const partner = await ensureKianPartnerOrg();
+    orgId = partner.org.id;
+  }
+
+  const org = await prisma.organization.findUnique({ where: { id: orgId } });
+  if (!org) redirect("/admin/orders/new?error=Practice+not+found");
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: lines.map((line) => line.productId) } },
+  });
+  if (products.length !== lines.length) {
+    redirect("/admin/orders/new?error=One+or+more+products+are+invalid");
+  }
+  const byId = new Map(products.map((product) => [product.id, product]));
+
+  for (const line of lines) {
+    const product = byId.get(line.productId)!;
+    const gate = canAdminOrder(product.active);
+    if (!gate.ok) redirect(`/admin/orders/new?error=${encodeURIComponent(gate.reason)}`);
+    if (!isProductClass(product.productClass)) {
+      redirect(`/admin/orders/new?error=${encodeURIComponent(`Unknown class on ${product.sku}`)}`);
+    }
+    if (product.rxRequired && (line.patientInitials || "").length < 2) {
+      redirect(
+        `/admin/orders/new?error=${encodeURIComponent(`${product.name} needs patient initials`)}`,
+      );
+    }
+  }
+
+  let patient = clinicalPatientId
+    ? await prisma.clinicalPatient.findUnique({ where: { id: clinicalPatientId } })
+    : null;
+
+  if (patient && patient.orgId !== orgId) {
+    redirect("/admin/orders/new?error=Patient+belongs+to+another+practice");
+  }
+
+  if (!patient) {
+    const kianIntakeId = `admin:${Date.now()}`;
+    patient = await prisma.clinicalPatient.create({
+      data: {
+        orgId,
+        email,
+        fullName: fullName || email,
+        phone,
+        dateOfBirth,
+        allergies: "NKDA",
+        kianIntakeId,
+        sourceSite: "admin-desk",
+        intakeStatus: "admin_created",
+        statusNote: notes || "Created from admin order desk",
+        addressJson: "{}",
+        programsJson: "[]",
+        intakePayloadJson: "{}",
+        signaturesJson: "[]",
+        therapyJson: "{}",
+        clinicalChartJson: JSON.stringify({ source: "admin_order_desk" }),
+      },
+    });
+  } else {
+    patient = await prisma.clinicalPatient.update({
+      where: { id: patient.id },
+      data: {
+        fullName: fullName || patient.fullName,
+        phone: phone || patient.phone,
+        dateOfBirth: dateOfBirth || patient.dateOfBirth,
+        email: email || patient.email,
+      },
+    });
+  }
+
+  const classes: string[] = [];
+  let subtotal = 0;
+  let needsEscript = false;
+  const storages: string[] = [];
+  const lineCreates = lines.map((line) => {
+    const product = byId.get(line.productId)!;
+    const unit =
+      line.unitPriceCents != null && line.unitPriceCents >= 0 ? line.unitPriceCents : product.priceCents;
+    subtotal += unit * line.qty;
+    storages.push(product.storage);
+    classes.push(product.productClass);
+    if (requiresEscript(product.productClass, product.rxRequired)) needsEscript = true;
+    const initials =
+      line.patientInitials ||
+      patient!.fullName
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => part[0] || "")
+        .join("")
+        .toUpperCase()
+        .slice(0, 3);
+    return {
+      sku: product.sku,
+      name: product.name,
+      productClass: product.productClass,
+      qty: line.qty,
+      unitPriceCents: unit,
+      patientInitials: initials,
+      prescriber: admin.name,
+      sig: line.sig || "As directed by prescribing clinician.",
+      daysSupply: line.daysSupply || (product.rxRequired ? 30 : 0),
+      strength: product.strength,
+      size: product.size,
+      dosageForm: product.form,
+      routedSource: isProductClass(product.productClass) ? routeSource(product.productClass) : "Held",
+    };
+  });
+
+  const pharmacies = await ensurePharmacyNetwork();
+  const eventide = pharmacies.find((p) => /eventide/i.test(p.name)) || pharmacies[0];
+  const shipping = shippingCents(storages);
+  const split = fulfillmentGroups(classes);
+  const count = await prisma.order.count();
+  const order = await prisma.order.create({
+    data: {
+      orgId,
+      placedById: admin.id,
+      clinicalPatientId: patient.id,
+      pharmacyId: eventide?.id,
+      invoiceNumber: `WT-ADMIN-${String(count + 1).padStart(4, "0")}`,
+      status: needsEscript ? "on_hold" : "submitted",
+      paymentStatus,
+      paymentToken: `admin_${admin.id.slice(0, 8)}`,
+      cardLast4: "admin",
+      shippingFeeCents: shipping,
+      subtotalCents: subtotal,
+      totalCents: subtotal + shipping,
+      shipDestination,
+      escriptStatus: needsEscript ? "pending_signature" : "not_required",
+      source: "admin",
+      splitMessage: split.message,
+      shipToJson: JSON.stringify({ destination: shipDestination, notes }),
+      partnerExternalRef: `admin:${admin.id}:${Date.now()}`,
+      lines: { create: lineCreates },
+    },
+    include: { lines: true },
+  });
+
+  await prisma.clinicalPatient.update({
+    where: { id: patient.id },
+    data: { lastOrderId: order.id },
+  });
+
+  if (forwardPharmacy && !needsEscript) {
+    await openRxcoreOrder({
+      orderId: order.id,
+      lines: order.lines
+        .filter((line) => isProductClass(line.productClass))
+        .map((line) => ({
+          productClass: line.productClass as "503A",
+          patientInitials: line.patientInitials,
+        })),
+    }).catch((error) => {
+      console.error("admin pharmacy forward failed", order.id, error);
+    });
+  }
+
+  await audit({
+    actorId: admin.id,
+    action: "order.admin_created",
+    object: order.invoiceNumber,
+    after: `${order.lines.length} lines; patient:${patient.id}; pay:${paymentStatus}`,
+  });
+
+  revalidatePath("/admin/orders");
+  revalidatePath(`/admin/orders/${order.id}`);
+  revalidatePath(`/admin/patients/${patient.id}`);
+  redirect(`/admin/orders/${order.id}?created=1`);
+}

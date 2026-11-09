@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { canOrder, commissionCents, fulfillmentGroups } from "./rules";
+import { canAdminOrder, canOrder, commissionCents, fulfillmentGroups } from "./rules";
 
 describe("catalog gates", () => {
   it("stops a Tier 1 account from ordering 503B office stock", () => {
@@ -18,6 +18,11 @@ describe("catalog gates", () => {
   it("keeps exosomes and bulk APIs off checkout", () => {
     assert.equal(canOrder(4, "exosome", false).ok, false);
     assert.equal(canOrder(4, "bulk_api", true).ok, false);
+  });
+
+  it("lets admin desk order active SKUs including held classes", () => {
+    assert.equal(canAdminOrder(true).ok, true);
+    assert.equal(canAdminOrder(false).ok, false);
   });
 });
 
