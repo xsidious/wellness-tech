@@ -271,7 +271,9 @@ export async function POST(request: Request) {
           ? "WT-4EG"
           : partnerSite === "facial-design"
             ? "WT-FDS"
-            : `WT-${partnerSite.slice(0, 6).toUpperCase()}`;
+            : partnerSite === "hope-and-haven"
+              ? "WT-HAH"
+              : `WT-${partnerSite.slice(0, 6).toUpperCase()}`;
 
   const order = await prisma.order.create({
     data: {

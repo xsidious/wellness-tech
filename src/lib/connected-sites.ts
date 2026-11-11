@@ -99,6 +99,18 @@ const DEFAULT_SITES: SeedSite[] = [
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
     notes: "Partner facial aesthetics clinic. Intakes → KIAN Privé; orders → Wellness Tech.",
   },
+  {
+    slug: "hope-and-haven",
+    displayName: "Hope & Haven International",
+    kind: "clinical",
+    baseUrl: process.env.HOPE_AND_HAVEN_APP_URL?.trim() || "https://hope-and-haven.vercel.app",
+    sourceKey: "hope-and-haven",
+    statusWebhookPath: "/api/kian/webhook",
+    overviewPath: "/api/webhooks/wellness-tech-overview",
+    healthPath: "/",
+    secretEnvKey: "WT_PARTNER_ORDER_SECRET",
+    notes: "Partner nonprofit clinic. Intakes → KIAN Privé; catalog/orders → Wellness Tech.",
+  },
 ];
 
 export async function ensureConnectedSites() {
