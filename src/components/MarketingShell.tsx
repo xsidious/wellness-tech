@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { AccessibilityWidget } from "@/components/AccessibilityWidget";
 
 function NavLinks() {
   return (
@@ -51,6 +52,7 @@ export function MarketingShell({
         </div>
       </header>
       {children}
+      <AccessibilityWidget />
       {auth ? (
         <footer className="auth-footer">
           <div className="wrap">

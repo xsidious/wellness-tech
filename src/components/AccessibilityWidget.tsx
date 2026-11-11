@@ -61,9 +61,11 @@ export function AccessibilityWidget() {
         className="a11y-fab-btn"
         aria-expanded={open}
         aria-controls={panelId}
+        aria-label="Accessibility options"
+        title="Accessibility"
         onClick={() => setOpen((v) => !v)}
       >
-        <span aria-hidden>♿</span> Accessibility
+        <span aria-hidden>♿</span>
       </button>
       {open ? (
         <div id={panelId} role="dialog" aria-label="Accessibility options" className="a11y-panel">
