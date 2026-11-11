@@ -10,7 +10,7 @@ export const metadata: Metadata = buildSeoMetadata({
 
   description:
 
-    "503A formulary for licensed practices. GLP-1s, anti-aging, and more. Practice retail from the formulary price list.",
+    "503A formulary for licensed practices. GLP-1s, anti-aging, and more. Practice pricing available after portal login.",
 
   canonicalPath: "/products",
 
@@ -27,8 +27,6 @@ import { PageBanner } from "@/components/PageBanner";
 import { photos } from "@/lib/photos";
 
 import { loadPublicFormulary } from "@/lib/formulary-public";
-
-import { money } from "@/lib/money";
 
 
 
@@ -53,7 +51,7 @@ export default function ProductsPage() {
       <PageBanner
         kicker="Therapies"
         title="503A formulary for licensed practices."
-        lede="Full catalog below. Prices shown are practice retail from the formulary price list. Patient-specific compounded lines require a prescription."
+        lede="Full catalog below for licensed practices. Patient-specific compounded lines require a prescription. Practice pricing is available after portal login."
         image={photos.weight}
       >
         <Link className="btn btn-accent" href="/signup">Get practice access</Link>
@@ -71,7 +69,7 @@ export default function ProductsPage() {
 
                 <thead>
 
-                  <tr><th>SKU</th><th>Medication</th><th>Strength</th><th>Size</th><th>Form</th><th>Price</th></tr>
+                  <tr><th>SKU</th><th>Medication</th><th>Strength</th><th>Size</th><th>Form</th></tr>
 
                 </thead>
 
@@ -90,8 +88,6 @@ export default function ProductsPage() {
                       <td>{item.size}</td>
 
                       <td>{item.form}</td>
-
-                      <td>{item.priceCents ? money(item.priceCents) : "—"}</td>
 
                     </tr>
 

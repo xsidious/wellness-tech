@@ -27,12 +27,12 @@ export default function ExosomesPage() {
       <PageBanner
         kicker="Exosomes"
         title="Celexo and Lumidor, listed for practices."
-        lede="Celexo lines are for topical use. Lumidor lines are exosome-infused topicals. Unit prices are listed below; checkout stays held until compliance confirms labeling and intended use."
+        lede="Celexo lines are for topical use. Lumidor lines are exosome-infused topicals. Practice pricing is available after portal login; checkout stays held until compliance confirms labeling and intended use."
         image={photos.exosomes}
       />
       <section className="wrap section stack">
         <p className="note" style={{ margin: 0 }}>
-          {lines.length} Celexo / Lumidor lines are priced in the catalog. Portal checkout for exosomes remains held for compliance.
+          {lines.length} Celexo / Lumidor lines in the public catalog. Portal checkout for exosomes remains held for compliance.
         </p>
         {[...groups.entries()].map(([category, items]) => (
           <div className="stack" key={category}>
@@ -41,7 +41,7 @@ export default function ExosomesPage() {
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr><th>Item</th><th>Product</th><th>Size</th><th>Price</th></tr>
+                  <tr><th>Item</th><th>Product</th><th>Size</th></tr>
                 </thead>
                 <tbody>
                   {items.map((item) => (
@@ -49,7 +49,6 @@ export default function ExosomesPage() {
                       <td>{item.sku}</td>
                       <td>{item.name}</td>
                       <td>{item.size}</td>
-                      <td>${(item.priceCents / 100).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
