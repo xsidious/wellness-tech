@@ -842,8 +842,16 @@ textarea { min-height: 90px; }
 }
 .auth-turnstile {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 72px;
+}
+.auth-turnstile-box {
+  min-height: 65px;
+  display: flex;
   justify-content: center;
-  min-height: 0;
+  width: 100%;
 }
 .auth-stage-solo {
   display: flex;
