@@ -345,16 +345,22 @@ export async function completeSignup(formData: FormData) {
   redirect("/portal");
 }
 
-export async function saveNpi(formData: FormData) {
+export async function saveNpi(formData: FormData): Promise<{ error?: string } | void> {
   const userId = await readUserId();
   if (!userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { org: true } });
   if (!user) redirect("/login");
   const npi = String(formData.get("npi") || "").replace(/\D/g, "");
   const license = String(formData.get("license") || "").trim();
-  const attested = formData.get("attest") === "on";
-  if (!/^\d{10}$/.test(npi)) redirect("/signup/npi?error=NPI+numbers+are+10+digits");
-  if (!attested || license.length < 3) redirect("/signup/npi?error=Confirm+an+active+state+license");
+  const licenseState = String(formData.get("licenseState") || "")
+    .trim()
+    .toUpperCase()
+    .slice(0, 2);
+  const attested = formData.get("attest") === "on" || formData.get("attest") === "true";
+  if (!/^\d{10}$/.test(npi)) return { error: "Enter a valid 10-digit NPI (numbers only)." };
+  if (license.length < 3) return { error: "Enter your state license number." };
+  if (!/^[A-Z]{2}$/.test(licenseState)) return { error: "Select the state on your license." };
+  if (!attested) return { error: "Please attest that your state license is currently active." };
 
   let displayName = user.name;
   let specialty = "";
@@ -362,45 +368,64 @@ export async function saveNpi(formData: FormData) {
     displayName = `${user.name}, MD`;
     specialty = "Sandbox registry";
   } else {
-    const response = await fetch(`https://npiregistry.cms.hhs.gov/api/?version=2.1&number=${npi}`, {
-      cache: "no-store",
-    });
-    const data = (await response.json()) as {
-      result_count?: number;
-      results?: { basic?: { first_name?: string; last_name?: string; credential?: string }; taxonomies?: { desc?: string }[] }[];
-    };
-    if (!data.result_count) redirect("/signup/npi?error=That+NPI+was+not+found");
-    const basic = data.results?.[0]?.basic;
-    displayName = [basic?.first_name, basic?.last_name, basic?.credential].filter(Boolean).join(" ");
-    specialty = data.results?.[0]?.taxonomies?.[0]?.desc || "";
+    try {
+      const response = await fetch(`https://npiregistry.cms.hhs.gov/api/?version=2.1&number=${npi}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        return { error: "NPI registry is temporarily unavailable. Try again in a moment." };
+      }
+      const data = (await response.json()) as {
+        result_count?: number;
+        results?: {
+          basic?: { first_name?: string; last_name?: string; credential?: string };
+          taxonomies?: { desc?: string; state?: string; license?: string }[];
+        }[];
+      };
+      if (!data.result_count) return { error: "That NPI was not found in the CMS registry." };
+      const basic = data.results?.[0]?.basic;
+      displayName = [basic?.first_name, basic?.last_name, basic?.credential].filter(Boolean).join(" ");
+      specialty = data.results?.[0]?.taxonomies?.[0]?.desc || "";
+    } catch {
+      return { error: "Could not reach the NPI registry. Check your connection and try again." };
+    }
   }
 
-  await prisma.prescriberCredential.upsert({
-    where: { userId: user.id },
-    create: {
-      userId: user.id,
-      npi,
-      displayName,
-      specialty,
-      licenseCipher: encryptField(license),
-      oigStatus: "pending_vendor",
-      verificationTier: 1,
-    },
-    update: {
-      npi,
-      displayName,
-      specialty,
-      licenseCipher: encryptField(license),
-      verificationTier: 1,
-    },
-  });
+  const licensePayload = `${licenseState}|${license}`;
+  try {
+    await prisma.prescriberCredential.upsert({
+      where: { userId: user.id },
+      create: {
+        userId: user.id,
+        npi,
+        displayName,
+        specialty,
+        licenseCipher: encryptField(licensePayload),
+        oigStatus: "pending_vendor",
+        verificationTier: 1,
+      },
+      update: {
+        npi,
+        displayName,
+        specialty,
+        licenseCipher: encryptField(licensePayload),
+        verificationTier: 1,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not save credentials.";
+    if (message.includes("FIELD_KEY")) {
+      return { error: "Server encryption is not configured. Contact support." };
+    }
+    return { error: "Could not save your credentials. Please try again." };
+  }
   const nextTier = Math.max(user.org.verificationTier, 1);
   await prisma.organization.update({ where: { id: user.orgId }, data: { verificationTier: nextTier } });
   await audit({
     actorId: user.id,
     action: "credential.npi_verified",
     object: user.orgId,
-    after: "tier-1; oig, DEA, and state-board vendors still pending",
+    after: `tier-1; license ${licenseState}; oig, DEA, and state-board vendors still pending`,
   });
   redirect("/portal");
 }

@@ -22,12 +22,32 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         <div className="auth-stage-grid">
           <div className="auth-panel-col">
             <div className="auth-panel-inner">
-              <p className="kicker auth-kicker">Create an account</p>
+              <p className="kicker auth-kicker">Step 1 · Account</p>
               <h1 className="auth-title">{title}</h1>
               <p className="auth-lede">
-                Start at verification Tier 0. Prescribers continue to NPI after signup
+                Create your login first. Prescribers continue to NPI and license verification next
                 {query.ref ? <> · referral <strong>{query.ref}</strong></> : null}.
               </p>
+              <ol className="signup-steps signup-steps-inline" aria-label="Signup progress">
+                <li className="signup-step is-active">
+                  <span className="signup-step-num" aria-hidden>
+                    1
+                  </span>
+                  <span>Account</span>
+                </li>
+                <li className="signup-step">
+                  <span className="signup-step-num" aria-hidden>
+                    2
+                  </span>
+                  <span>NPI</span>
+                </li>
+                <li className="signup-step">
+                  <span className="signup-step-num" aria-hidden>
+                    3
+                  </span>
+                  <span>License</span>
+                </li>
+              </ol>
               <SignupPanel
                 accountType={accountType}
                 refCode={query.ref || ""}

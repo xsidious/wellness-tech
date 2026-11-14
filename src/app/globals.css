@@ -593,6 +593,124 @@ textarea { min-height: 90px; }
   font-size: 14px;
   line-height: 1.45;
 }
+.signup-steps {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.signup-steps-inline {
+  margin: 0 0 18px;
+}
+.signup-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.signup-step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.signup-step.is-active {
+  border-color: rgba(24, 72, 104, 0.35);
+  background: #eef5f9;
+  color: var(--ink);
+}
+.signup-step.is-active .signup-step-num,
+.signup-step.is-done .signup-step-num {
+  background: var(--brand);
+  color: #fff;
+}
+.signup-step.is-done {
+  color: var(--ink);
+}
+.signup-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.signup-two-col {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+}
+.signup-two-col select {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 14px 12px;
+  font: inherit;
+}
+.signup-attest {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.signup-attest input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+.signup-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.signup-actions .auth-submit {
+  margin-top: 0;
+}
+.auth-visual-shade-solo {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(160deg, rgba(15, 45, 66, 0.92), rgba(24, 72, 104, 0.72)),
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.12), transparent 50%);
+}
+@media (max-width: 720px) {
+  .signup-two-col {
+    grid-template-columns: 1fr;
+  }
+  .signup-steps {
+    gap: 6px;
+  }
+  .signup-step span:last-child {
+    display: none;
+  }
+  .signup-step {
+    justify-content: center;
+  }
+}
 .auth-turnstile {
   display: flex;
   justify-content: center;
