@@ -261,88 +261,95 @@ export async function confirmMfa(formData: FormData) {
 
 export async function completeSignup(formData: FormData) {
   const meta = await requestClientMeta();
-  if (honeypotTripped(formData)) return { error: "Unable to create account." };
-  const originCheck = assertSameOrigin(meta);
-  if (!originCheck.ok) return { error: originCheck.error };
+  try {
+    if (honeypotTripped(formData)) return { error: "Unable to create account." };
+    const originCheck = assertSameOrigin(meta);
+    if (!originCheck.ok) return { error: originCheck.error };
 
-  const pendingEmail = await readPending();
-  const email = (pendingEmail || String(formData.get("email") || "")).trim().toLowerCase();
-  if (!email.includes("@")) return { error: "Enter a valid email." };
-  const name = String(formData.get("name") || "").trim();
-  const legalName = String(formData.get("legalName") || "").trim();
-  const accountType = String(formData.get("accountType") || "practice");
-  const password = String(formData.get("password") || "");
-  const pin = String(formData.get("pin") || "").trim();
-  const ref = String(formData.get("ref") || "").trim().toUpperCase();
-  const turnstile = String(formData.get("cf-turnstile-response") || "");
-  if (name.length < 2 || legalName.length < 2) return { error: "Name and organization are required." };
-  const strong = assertStrongPassword(password);
-  if (!strong.ok) return { error: strong.error };
-  if (!/^\d{6}$/.test(pin)) return { error: "Choose a 6-digit security PIN (second factor)." };
+    const pendingEmail = await readPending();
+    const email = (pendingEmail || String(formData.get("email") || "")).trim().toLowerCase();
+    if (!email.includes("@")) return { error: "Enter a valid email." };
+    const name = String(formData.get("name") || "").trim();
+    const legalName = String(formData.get("legalName") || "").trim();
+    const accountType = String(formData.get("accountType") || "practice");
+    const password = String(formData.get("password") || "");
+    const pin = String(formData.get("pin") || "").trim();
+    const ref = String(formData.get("ref") || "").trim().toUpperCase();
+    const turnstile = String(formData.get("cf-turnstile-response") || "");
+    if (name.length < 2 || legalName.length < 2) return { error: "Name and organization are required." };
+    const strong = assertStrongPassword(password);
+    if (!strong.ok) return { error: strong.error };
+    if (!/^\d{6}$/.test(pin)) return { error: "Choose a 6-digit security PIN (second factor)." };
 
-  const bot = await verifyTurnstile(turnstile, meta.ip);
-  if (!bot.ok) return { error: bot.error || "Bot check failed." };
+    const bot = await verifyTurnstile(turnstile, meta.ip);
+    if (!bot.ok) return { error: bot.error || "Bot check failed." };
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return { error: "That email already has an account. Sign in instead." };
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return { error: "That email already has an account. Sign in instead." };
 
-  let referringAffiliateId = "";
-  let parentAffiliateProfileId: string | null = null;
-  if (ref) {
-    const affiliate = await prisma.affiliateProfile.findUnique({ where: { code: ref } });
-    if (affiliate) {
-      referringAffiliateId = affiliate.userId;
-      if (accountType === "affiliate") parentAffiliateProfileId = affiliate.id;
+    let referringAffiliateId = "";
+    let parentAffiliateProfileId: string | null = null;
+    if (ref) {
+      const affiliate = await prisma.affiliateProfile.findUnique({ where: { code: ref } });
+      if (affiliate) {
+        referringAffiliateId = affiliate.userId;
+        if (accountType === "affiliate") parentAffiliateProfileId = affiliate.id;
+      }
     }
-  }
-  const roles =
-    accountType === "affiliate"
-      ? ["affiliate"]
-      : accountType === "telehealth"
-        ? ["owner", "api_client"]
-        : ["owner", "prescriber"];
-  const slugBase = legalName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "org";
-  const org = await prisma.organization.create({
-    data: {
-      type: accountType,
-      legalName,
-      slug: `${slugBase}-${randomInt(1000, 9999)}`,
-      verificationTier: 0,
-      referringAffiliateId,
-      assignedRep: "Alex Morgan",
-    },
-  });
-  const user = await prisma.user.create({
-    data: {
-      orgId: org.id,
-      email,
-      name,
-      roles: JSON.stringify(roles),
-      passwordHash: await bcrypt.hash(password, 12),
-      mfaHash: await bcrypt.hash(pin, 10),
-      mfaEnabled: true,
-      lastLoginAt: new Date(),
-    },
-  });
-  if (accountType === "affiliate") {
-    const code = legalName.replace(/[^A-Za-z]/g, "").slice(0, 8).toUpperCase() || "PARTNER";
-    const affiliateCode = `${code}${randomInt(10, 99)}`;
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.thewellnesstech.com").replace(/\/$/, "");
-    await prisma.affiliateProfile.create({
+    const roles =
+      accountType === "affiliate"
+        ? ["affiliate"]
+        : accountType === "telehealth"
+          ? ["owner", "api_client"]
+          : ["owner", "prescriber"];
+    const slugBase = legalName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "org";
+    const org = await prisma.organization.create({
       data: {
-        userId: user.id,
-        code: affiliateCode,
-        payoutToken: "tok_bank_sandbox",
-        w9Status: "sandbox_received",
-        parentId: parentAffiliateProfileId,
-        partnerLink: `${appUrl}/signup?ref=${affiliateCode}`,
+        type: accountType,
+        legalName,
+        slug: `${slugBase}-${randomInt(1000, 9999)}`,
+        verificationTier: 0,
+        referringAffiliateId,
+        assignedRep: "Alex Morgan",
       },
     });
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        roles: JSON.stringify(roles),
+        passwordHash: await bcrypt.hash(password, 12),
+        mfaHash: await bcrypt.hash(pin, 10),
+        mfaEnabled: true,
+        lastLoginAt: new Date(),
+        org: { connect: { id: org.id } },
+      },
+    });
+    if (accountType === "affiliate") {
+      const code = legalName.replace(/[^A-Za-z]/g, "").slice(0, 8).toUpperCase() || "PARTNER";
+      const affiliateCode = `${code}${randomInt(10, 99)}`;
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.wellnesstechdistribution.com").replace(
+        /\/$/,
+        "",
+      );
+      await prisma.affiliateProfile.create({
+        data: {
+          userId: user.id,
+          code: affiliateCode,
+          payoutToken: "tok_bank_sandbox",
+          w9Status: "sandbox_received",
+          parentId: parentAffiliateProfileId,
+          partnerLink: `${appUrl}/signup?ref=${affiliateCode}`,
+        },
+      });
+    }
+    await audit({ actorId: user.id, action: "auth.signup", object: org.id, after: accountType });
+    await setLogin(user.id);
+    if (roles.includes("prescriber")) redirect("/signup/npi");
+    redirect("/portal");
+  } catch (error) {
+    return { error: signInError(error) };
   }
-  await audit({ actorId: user.id, action: "auth.signup", object: org.id, after: accountType });
-  await setLogin(user.id);
-  if (roles.includes("prescriber")) redirect("/signup/npi");
-  redirect("/portal");
 }
 
 export async function saveNpi(formData: FormData): Promise<{ error?: string } | void> {

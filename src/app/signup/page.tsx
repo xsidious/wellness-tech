@@ -16,38 +16,72 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
   const accountType = query.type === "affiliate" || query.type === "telehealth" ? query.type : "practice";
   const title = accountType === "affiliate" ? "Join as an affiliate." : "Open a practice account.";
   const visual = accountType === "affiliate" ? photos.equipment : photos.hero;
+  const isAffiliate = accountType === "affiliate";
   return (
     <MarketingShell variant="auth">
       <section className="auth-stage">
         <div className="auth-stage-grid">
           <div className="auth-panel-col">
             <div className="auth-panel-inner">
-              <p className="kicker auth-kicker">Step 1 · Account</p>
+              <p className="kicker auth-kicker">{isAffiliate ? "Affiliate signup" : "Step 1 · Account"}</p>
               <h1 className="auth-title">{title}</h1>
               <p className="auth-lede">
-                Create your login first. Prescribers continue to NPI and license verification next
+                {isAffiliate
+                  ? "Create your affiliate login, then sign in to get your referral link."
+                  : "Create your login first. Prescribers continue to NPI and license verification next"}
                 {query.ref ? <> · referral <strong>{query.ref}</strong></> : null}.
               </p>
-              <ol className="signup-steps signup-steps-inline" aria-label="Signup progress">
-                <li className="signup-step is-active">
-                  <span className="signup-step-num" aria-hidden>
-                    1
-                  </span>
-                  <span>Account</span>
-                </li>
-                <li className="signup-step">
-                  <span className="signup-step-num" aria-hidden>
-                    2
-                  </span>
-                  <span>NPI</span>
-                </li>
-                <li className="signup-step">
-                  <span className="signup-step-num" aria-hidden>
-                    3
-                  </span>
-                  <span>License</span>
-                </li>
-              </ol>
+              <p className="signup-type-switch" role="navigation" aria-label="Account type">
+                <Link
+                  href={`/signup${query.ref ? `?ref=${encodeURIComponent(query.ref)}` : ""}`}
+                  className={!isAffiliate ? "is-active" : undefined}
+                >
+                  Practitioner
+                </Link>
+                <Link
+                  href={`/signup?type=affiliate${query.ref ? `&ref=${encodeURIComponent(query.ref)}` : ""}`}
+                  className={isAffiliate ? "is-active" : undefined}
+                >
+                  Affiliate
+                </Link>
+              </p>
+              {isAffiliate ? (
+                <ol className="signup-steps signup-steps-inline" aria-label="Signup progress">
+                  <li className="signup-step is-active">
+                    <span className="signup-step-num" aria-hidden>
+                      1
+                    </span>
+                    <span>Account</span>
+                  </li>
+                  <li className="signup-step">
+                    <span className="signup-step-num" aria-hidden>
+                      2
+                    </span>
+                    <span>Portal</span>
+                  </li>
+                </ol>
+              ) : (
+                <ol className="signup-steps signup-steps-inline" aria-label="Signup progress">
+                  <li className="signup-step is-active">
+                    <span className="signup-step-num" aria-hidden>
+                      1
+                    </span>
+                    <span>Account</span>
+                  </li>
+                  <li className="signup-step">
+                    <span className="signup-step-num" aria-hidden>
+                      2
+                    </span>
+                    <span>NPI</span>
+                  </li>
+                  <li className="signup-step">
+                    <span className="signup-step-num" aria-hidden>
+                      3
+                    </span>
+                    <span>License</span>
+                  </li>
+                </ol>
+              )}
               <SignupPanel
                 accountType={accountType}
                 refCode={query.ref || ""}

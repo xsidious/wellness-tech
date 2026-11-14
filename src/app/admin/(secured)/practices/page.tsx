@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminProvisionForm } from "@/components/AdminProvisionForm";
 import {
   EmptyState,
   PageHeader,
@@ -25,6 +26,13 @@ export default async function AdminPracticesPage() {
         title="Practices"
         lede="Onboarding, verification tier, locations, and assigned rep — unlock catalog depth as credentials clear."
       />
+
+      <SectionCard
+        title="Create practitioner account"
+        description="Spin up a practice login for someone who cannot self-register. They sign in at /login, then complete NPI + license."
+      >
+        <AdminProvisionForm defaultType="practice" />
+      </SectionCard>
 
       <SectionCard title="All organizations">
         {practices.length ? (

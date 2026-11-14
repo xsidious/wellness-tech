@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminProvisionForm } from "@/components/AdminProvisionForm";
 import {
   EmptyState,
   PageHeader,
@@ -40,6 +41,13 @@ export default async function AdminAffiliatesPage() {
           </form>
         }
       />
+
+      <SectionCard
+        title="Create affiliate account"
+        description="Create a partner login with a referral code. They sign in at /login with email, password, and PIN."
+      >
+        <AdminProvisionForm defaultType="affiliate" />
+      </SectionCard>
 
       <SectionCard title="Affiliate partners">
         {affiliates.length ? (

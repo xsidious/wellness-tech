@@ -193,14 +193,39 @@ export function SignupPanel({
   turnstileSiteKey?: string;
 }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [localError, setLocalError] = useState("");
   const [signed, signupAction, pending] = useActionState(
-    async (_prev: { error?: string } | null, formData: FormData) => completeSignup(formData),
+    async (_prev: { error?: string } | null, formData: FormData) => {
+      if (turnstileSiteKey) {
+        const token = String(formData.get("cf-turnstile-response") || "");
+        if (!token) {
+          return { error: "Wait for the security check to finish, then try again." };
+        }
+      }
+      return completeSignup(formData);
+    },
     null,
   );
 
+  const error = signed?.error || localError;
+
   return (
     <div className="auth-card">
-      <form className="auth-form" action={signupAction}>
+      <form
+        className="auth-form"
+        action={signupAction}
+        onSubmit={() => {
+          setLocalError("");
+          if (turnstileSiteKey) {
+            const token = (
+              document.querySelector('input[name="cf-turnstile-response"]') as HTMLInputElement | null
+            )?.value;
+            if (!token) {
+              setLocalError("Wait for the security check to finish, then try again.");
+            }
+          }
+        }}
+      >
         <label aria-hidden="true" className="auth-honeypot">
           Company website
           <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
@@ -238,7 +263,11 @@ export function SignupPanel({
         </label>
         <label className="auth-field">
           <span>Organization</span>
-          <input name="legalName" required placeholder="Practice or clinic name" />
+          <input
+            name="legalName"
+            required
+            placeholder={accountType === "affiliate" ? "Affiliate / company name" : "Practice or clinic name"}
+          />
         </label>
         <label className="auth-field">
           <span>6-digit security PIN</span>
@@ -253,9 +282,9 @@ export function SignupPanel({
           />
         </label>
         <TurnstileField siteKey={turnstileSiteKey} />
-        {signed?.error ? (
+        {error ? (
           <p className="auth-error" role="alert">
-            {signed.error}
+            {error}
           </p>
         ) : null}
         <button className="btn btn-accent auth-submit" disabled={pending}>
@@ -263,6 +292,17 @@ export function SignupPanel({
         </button>
         <p className="auth-meta">
           Already registered? <Link href="/login">Sign in</Link>
+          {accountType === "affiliate" ? (
+            <>
+              {" · "}
+              <Link href="/signup">Practitioner instead</Link>
+            </>
+          ) : (
+            <>
+              {" · "}
+              <Link href="/signup?type=affiliate">Affiliate instead</Link>
+            </>
+          )}
         </p>
       </form>
     </div>
