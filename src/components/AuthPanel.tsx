@@ -194,12 +194,16 @@ export function SignupPanel({
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [turnstileReady, setTurnstileReady] = useState(!turnstileSiteKey);
   const [signed, signupAction, pending] = useActionState(
     async (_prev: { error?: string } | null, formData: FormData) => {
       if (turnstileSiteKey) {
-        const token = String(formData.get("cf-turnstile-response") || "");
+        const token = String(formData.get("cf-turnstile-response") || "").trim();
         if (!token) {
-          return { error: "Wait for the security check to finish, then try again." };
+          return {
+            error:
+              "Security check did not finish. Wait until it says ready, then try again — or refresh if it failed to load.",
+          };
         }
       }
       return completeSignup(formData);
@@ -214,15 +218,15 @@ export function SignupPanel({
       <form
         className="auth-form"
         action={signupAction}
-        onSubmit={() => {
+        onSubmit={(e) => {
           setLocalError("");
-          if (turnstileSiteKey) {
-            const token = (
-              document.querySelector('input[name="cf-turnstile-response"]') as HTMLInputElement | null
-            )?.value;
-            if (!token) {
-              setLocalError("Wait for the security check to finish, then try again.");
-            }
+          if (!turnstileSiteKey) return;
+          const token = String(
+            (e.currentTarget.elements.namedItem("cf-turnstile-response") as HTMLInputElement | null)?.value || "",
+          ).trim();
+          if (!token) {
+            e.preventDefault();
+            setLocalError("Wait until the security check says ready, then create the account.");
           }
         }}
       >
@@ -281,14 +285,21 @@ export function SignupPanel({
             placeholder="Second factor for sign-in"
           />
         </label>
-        <TurnstileField siteKey={turnstileSiteKey} />
+        <TurnstileField
+          siteKey={turnstileSiteKey}
+          onStatusChange={(s) => {
+            setTurnstileReady(s.ready || !turnstileSiteKey);
+            if (s.error) setLocalError(s.error);
+            else if (s.ready) setLocalError("");
+          }}
+        />
         {error ? (
           <p className="auth-error" role="alert">
             {error}
           </p>
         ) : null}
-        <button className="btn btn-accent auth-submit" disabled={pending}>
-          {pending ? "Creating…" : "Create account"}
+        <button className="btn btn-accent auth-submit" disabled={pending || (Boolean(turnstileSiteKey) && !turnstileReady)}>
+          {pending ? "Creating…" : !turnstileReady && turnstileSiteKey ? "Waiting for security check…" : "Create account"}
         </button>
         <p className="auth-meta">
           Already registered? <Link href="/login">Sign in</Link>
