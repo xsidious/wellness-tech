@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AttentionStrip, type AttentionItem } from "@/components/portal/AttentionStrip";
 import {
   PageHeader,
   QuickLink,
@@ -26,9 +27,11 @@ export default async function AdminHome() {
     prescribers,
     escripts,
     pendingEscripts,
+    pendingOnboarding,
+    pendingCredential,
   ] = await Promise.all([
     prisma.organization.count({ where: { status: "active" } }),
-    prisma.order.count({ where: { status: { not: "delivered" } } }),
+    prisma.order.count({ where: { status: { notIn: ["delivered", "cancelled", "canceled"] } } }),
     prisma.order.aggregate({
       where: { paymentStatus: "paid", createdAt: { gte: since } },
       _sum: { totalCents: true },
@@ -56,6 +59,13 @@ export default async function AdminHome() {
     }),
     prisma.eScript.count().catch(() => 0),
     prisma.eScript.count({ where: { status: { in: ["draft", "pending"] } } }).catch(() => 0),
+    prisma.organization.count({ where: { onboardingComplete: false, type: "practice" } }),
+    prisma.user.count({
+      where: {
+        OR: [{ roles: { contains: "prescriber" } }, { roles: { contains: "owner" } }],
+        credential: null,
+      },
+    }),
   ]);
 
   const dayBuckets = Array.from({ length: 14 }, (_, i) => {
@@ -72,9 +82,50 @@ export default async function AdminHome() {
     const next = new Date(day);
     next.setDate(next.getDate() + 1);
     const rows = recentVolume.filter((o) => o.createdAt >= day && o.createdAt < next);
-    return { label: day.toLocaleDateString(undefined, { month: "short", day: "numeric" }), count: rows.length };
+    return {
+      label: day.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      count: rows.length,
+      cents: rows.reduce((s, r) => s + r.totalCents, 0),
+    };
   });
   const maxVol = Math.max(1, ...volumeByDay.map((d) => d.count));
+
+  const attention: AttentionItem[] = [];
+  if (pendingEscripts) {
+    attention.push({
+      href: "/admin/prescriptions",
+      label: `${pendingEscripts} eScript${pendingEscripts === 1 ? "" : "s"} awaiting signature`,
+      tone: "warn",
+    });
+  }
+  if (dueRefills) {
+    attention.push({
+      href: "/admin/refills",
+      label: `${dueRefills} refill${dueRefills === 1 ? "" : "s"} due across practices`,
+      tone: "warn",
+    });
+  }
+  if (pendingOnboarding) {
+    attention.push({
+      href: "/admin/practices",
+      label: `${pendingOnboarding} practice${pendingOnboarding === 1 ? "" : "s"} still onboarding`,
+      tone: "info",
+    });
+  }
+  if (pendingCredential) {
+    attention.push({
+      href: "/admin/prescribers",
+      label: `${pendingCredential} clinician${pendingCredential === 1 ? "" : "s"} missing NPI credentials`,
+      tone: "warn",
+    });
+  }
+  if (commissionsAgg._sum.amountCents) {
+    attention.push({
+      href: "/admin/affiliates",
+      label: `${money(commissionsAgg._sum.amountCents)} commissions ready to batch`,
+      tone: "info",
+    });
+  }
 
   return (
     <div className="ws-stack">
@@ -97,6 +148,8 @@ export default async function AdminHome() {
         }
       />
 
+      <AttentionStrip items={attention} />
+
       <div className="ws-stat-grid">
         <StatTile label="Open orders" value={openOrders} tone="accent" hint="Awaiting fulfillment" />
         <StatTile label="Patients" value={patients} hint={`${prescribers} clinicians`} />
@@ -106,7 +159,7 @@ export default async function AdminHome() {
           value={money(paidAgg._sum.totalCents || 0)}
           hint={`${paidAgg._count} paid invoices`}
         />
-        <StatTile label="Active practices" value={practices} />
+        <StatTile label="Active practices" value={practices} hint={`${pendingOnboarding} onboarding`} />
         <StatTile
           label="Commissions due"
           value={money(commissionsAgg._sum.amountCents || 0)}
@@ -116,11 +169,16 @@ export default async function AdminHome() {
       </div>
 
       <div className="ws-split">
-        <SectionCard title="Order volume" description="Last 14 days">
-          <div className="ws-bars" aria-hidden>
+        <SectionCard title="Order volume" description="Last 14 days · network-wide invoices">
+          <div className="ws-bars" role="img" aria-label="Order volume for the last 14 days">
             {volumeByDay.map((d) => (
-              <div key={d.label} className="ws-bar-col" title={`${d.label}: ${d.count}`}>
-                <div className="ws-bar" style={{ height: `${Math.max(8, (d.count / maxVol) * 100)}%` }} />
+              <div key={d.label} className="ws-bar-col" title={`${d.label}: ${d.count} orders · ${money(d.cents)}`}>
+                <div className="ws-bar-track">
+                  <div
+                    className="ws-bar"
+                    style={{ height: `${Math.max(d.count ? 12 : 4, (d.count / maxVol) * 100)}%` }}
+                  />
+                </div>
                 <span>{d.label.split(" ")[1] || d.label}</span>
               </div>
             ))}
