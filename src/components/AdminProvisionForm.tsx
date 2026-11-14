@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { adminProvisionAccount, type ProvisionAccountResult } from "@/lib/admin-actions";
+import { PinField } from "@/components/PinField";
 
 export function AdminProvisionForm({ defaultType = "practice" }: { defaultType?: "practice" | "affiliate" }) {
   const [state, action, pending] = useActionState(
@@ -35,10 +36,7 @@ export function AdminProvisionForm({ defaultType = "practice" }: { defaultType?:
             autoComplete="off"
           />
         </label>
-        <label className="auth-field">
-          <span>6-digit PIN (optional)</span>
-          <input name="pin" inputMode="numeric" minLength={6} maxLength={6} placeholder="Auto if blank" />
-        </label>
+        <PinField label="6-digit PIN (optional)" placeholder="Auto if blank" required={false} />
         <label className="auth-field">
           <span>Referral affiliate code (optional)</span>
           <input name="ref" placeholder="e.g. FAIRFAX" />

@@ -726,8 +726,24 @@ textarea { min-height: 90px; }
   font-weight: 700;
   cursor: pointer;
   padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
 }
 .auth-password-toggle:hover { color: var(--amber); }
+.auth-pin-toggle {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+}
+.auth-pin-toggle:hover {
+  background: rgba(24, 72, 104, 0.06);
+}
+.auth-pin-input {
+  letter-spacing: 0.28em;
+  font-variant-numeric: tabular-nums;
+}
 .auth-submit {
   width: 100%;
   margin-top: 4px;

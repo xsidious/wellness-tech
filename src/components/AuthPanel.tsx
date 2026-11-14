@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { completeSignup, confirmMfa, practicePasswordLogin, requestMagic, verifyMagic } from "@/lib/actions";
+import { PinField } from "@/components/PinField";
 import { TurnstileField } from "@/components/TurnstileField";
 
 export function LoginPanel({
@@ -53,19 +54,7 @@ export function LoginPanel({
           <p className="auth-step-note">
             Continue for <strong>{email}</strong>. Enter your 6-digit security PIN.
           </p>
-          <label className="auth-field">
-            <span>Security PIN</span>
-            <input
-              name="pin"
-              inputMode="numeric"
-              minLength={6}
-              maxLength={6}
-              required
-              autoFocus
-              autoComplete="one-time-code"
-              placeholder="••••••"
-            />
-          </label>
+          <PinField label="Security PIN" autoFocus />
           {mfaState?.error ? (
             <p className="auth-error" role="alert">
               {mfaState.error}
@@ -366,18 +355,7 @@ export function SignupPanel({
               placeholder={accountType === "affiliate" ? "Affiliate / company name" : "Practice or clinic name"}
             />
           </label>
-          <label className="auth-field">
-            <span>6-digit security PIN</span>
-            <input
-              name="pin"
-              inputMode="numeric"
-              minLength={6}
-              maxLength={6}
-              required
-              autoComplete="off"
-              placeholder="Second factor for sign-in"
-            />
-          </label>
+          <PinField label="6-digit security PIN" placeholder="Second factor for sign-in" />
           <TurnstileField
             siteKey={turnstileSiteKey}
             onStatusChange={(s) => {
