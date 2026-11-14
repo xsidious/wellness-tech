@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { saveNpi } from "@/lib/actions";
+import { previewNpi, saveNpi } from "@/lib/actions";
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME",
@@ -19,6 +19,10 @@ export function NpiSignupWizard({ initialError = "" }: { initialError?: string }
   const [licenseState, setLicenseState] = useState("");
   const [attest, setAttest] = useState(false);
   const [localError, setLocalError] = useState(initialError);
+  const [matchedName, setMatchedName] = useState("");
+  const [matchedSpecialty, setMatchedSpecialty] = useState("");
+  const [licensesHint, setLicensesHint] = useState("");
+  const [lookingUp, startLookup] = useTransition();
 
   const [serverState, action, pending] = useActionState(
     async (_prev: { error?: string } | null, formData: FormData) => {
@@ -38,7 +42,35 @@ export function NpiSignupWizard({ initialError = "" }: { initialError?: string }
       setLocalError("Enter a valid 10-digit NPI (numbers only).");
       return;
     }
-    setStep(2);
+    startLookup(async () => {
+      const fd = new FormData();
+      fd.set("npi", digits);
+      const preview = await previewNpi(fd);
+      if (preview.error) {
+        setLocalError(preview.error);
+        setMatchedName("");
+        setMatchedSpecialty("");
+        setLicensesHint("");
+        return;
+      }
+      setMatchedName(preview.displayName || "");
+      setMatchedSpecialty(preview.specialty || "");
+      setLicensesHint(preview.licensesHint || "");
+      if (preview.enumerationType === "NPI-2") {
+        setLocalError(
+          "That NPI is an organization (Type 2). Enter the prescribing clinician’s individual Type 1 NPI.",
+        );
+        return;
+      }
+      // Prefill state if CMS only lists one state.
+      const states = (preview.licensesHint || "")
+        .split("·")
+        .map((s) => s.trim().slice(0, 2))
+        .filter((s) => /^[A-Z]{2}$/.test(s));
+      const unique = [...new Set(states)];
+      if (unique.length === 1 && !licenseState) setLicenseState(unique[0]);
+      setStep(2);
+    });
   }
 
   return (
@@ -67,7 +99,8 @@ export function NpiSignupWizard({ initialError = "" }: { initialError?: string }
       {step === 1 ? (
         <form className="auth-form" onSubmit={goToLicense}>
           <p className="auth-step-note">
-            We match your NPI against the CMS registry. Use digits only — no spaces or dashes.
+            We look up your <strong>individual Type 1 NPI</strong> in the CMS NPPES registry (live). Use digits only —
+            this is not your state license number.
           </p>
           <label className="auth-field">
             <span>National Provider Identifier (NPI)</span>
@@ -88,19 +121,30 @@ export function NpiSignupWizard({ initialError = "" }: { initialError?: string }
               {error}
             </p>
           ) : null}
-          <button className="btn btn-accent auth-submit" type="submit">
-            Continue
+          <button className="btn btn-accent auth-submit" type="submit" disabled={lookingUp}>
+            {lookingUp ? "Checking CMS registry…" : "Look up NPI"}
           </button>
           <p className="auth-meta">
             <Link href="/portal">Skip for now · go to portal</Link>
+            {" · "}
+            <a href="https://npiregistry.cms.hhs.gov/" target="_blank" rel="noreferrer">
+              Find NPI on CMS
+            </a>
           </p>
         </form>
       ) : (
         <form className="auth-form" action={action}>
           <input type="hidden" name="npi" value={digits} />
-          <p className="auth-step-note">
-            Confirm the state license tied to NPI <strong>{digits}</strong>.
-          </p>
+          <div className="signup-match note" role="status">
+            <p>
+              <strong>CMS match:</strong> {matchedName || "Provider found"}
+            </p>
+            {matchedSpecialty ? <p className="muted">Specialty: {matchedSpecialty}</p> : null}
+            {licensesHint ? <p className="muted">Licenses on file: {licensesHint}</p> : null}
+            <p className="muted">
+              Next we compare your state license to what CMS has on this NPI (when CMS lists one for that state).
+            </p>
+          </div>
           <div className="signup-two-col">
             <label className="auth-field">
               <span>License state</span>

@@ -23,6 +23,7 @@ import {
   recordLoginSuccess,
   requestClientMeta,
 } from "@/lib/auth-security";
+import { lookupNpiInCms, matchLicenseToCms } from "@/lib/npi-registry";
 
 function sandboxAuthEnabled() {
   return (process.env.SANDBOX_AUTH || "").trim().toLowerCase() === "true";
@@ -352,6 +353,35 @@ export async function completeSignup(formData: FormData) {
   }
 }
 
+/** Preview CMS match on the NPI step before asking for license. */
+export async function previewNpi(formData: FormData): Promise<{
+  error?: string;
+  npi?: string;
+  displayName?: string;
+  specialty?: string;
+  enumerationType?: string;
+  licensesHint?: string;
+}> {
+  const userId = await readUserId();
+  if (!userId) redirect("/login");
+  const npi = String(formData.get("npi") || "").replace(/\D/g, "");
+  const found = await lookupNpiInCms(npi);
+  if (!found.ok) return { error: found.error };
+  const licensesHint = found.provider.taxonomies
+    .filter((t) => t.state || t.license)
+    .map((t) => `${t.state || "??"}${t.license ? ` ${t.license}` : ""}`.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(" · ");
+  return {
+    npi: found.provider.npi,
+    displayName: found.provider.displayName,
+    specialty: found.provider.specialty,
+    enumerationType: found.provider.enumerationType,
+    licensesHint: licensesHint || undefined,
+  };
+}
+
 export async function saveNpi(formData: FormData): Promise<{ error?: string } | void> {
   const userId = await readUserId();
   if (!userId) redirect("/login");
@@ -369,35 +399,14 @@ export async function saveNpi(formData: FormData): Promise<{ error?: string } | 
   if (!/^[A-Z]{2}$/.test(licenseState)) return { error: "Select the state on your license." };
   if (!attested) return { error: "Please attest that your state license is currently active." };
 
-  let displayName = user.name;
-  let specialty = "";
-  if (npi === "1000000001" && process.env.SANDBOX_AUTH === "true") {
-    displayName = `${user.name}, MD`;
-    specialty = "Sandbox registry";
-  } else {
-    try {
-      const response = await fetch(`https://npiregistry.cms.hhs.gov/api/?version=2.1&number=${npi}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        return { error: "NPI registry is temporarily unavailable. Try again in a moment." };
-      }
-      const data = (await response.json()) as {
-        result_count?: number;
-        results?: {
-          basic?: { first_name?: string; last_name?: string; credential?: string };
-          taxonomies?: { desc?: string; state?: string; license?: string }[];
-        }[];
-      };
-      if (!data.result_count) return { error: "That NPI was not found in the CMS registry." };
-      const basic = data.results?.[0]?.basic;
-      displayName = [basic?.first_name, basic?.last_name, basic?.credential].filter(Boolean).join(" ");
-      specialty = data.results?.[0]?.taxonomies?.[0]?.desc || "";
-    } catch {
-      return { error: "Could not reach the NPI registry. Check your connection and try again." };
-    }
-  }
+  const found = await lookupNpiInCms(npi);
+  if (!found.ok) return { error: found.error };
 
+  const licenseMatch = matchLicenseToCms(found.provider, licenseState, license);
+  if (!licenseMatch.ok) return { error: licenseMatch.error };
+
+  const displayName = found.provider.displayName || user.name;
+  const specialty = found.provider.specialty || "";
   const licensePayload = `${licenseState}|${license}`;
   try {
     await prisma.prescriberCredential.upsert({
@@ -432,7 +441,7 @@ export async function saveNpi(formData: FormData): Promise<{ error?: string } | 
     actorId: user.id,
     action: "credential.npi_verified",
     object: user.orgId,
-    after: `tier-1; license ${licenseState}; oig, DEA, and state-board vendors still pending`,
+    after: `tier-1; license ${licenseState}; cmsLicenseMatch=${licenseMatch.matched}; ${licenseMatch.note || "matched"}; oig/DEA/board still pending`,
   });
   redirect("/portal");
 }
