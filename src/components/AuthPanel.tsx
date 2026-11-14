@@ -1,11 +1,23 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { completeSignup, confirmMfa, practicePasswordLogin, requestMagic, verifyMagic } from "@/lib/actions";
 import { TurnstileField } from "@/components/TurnstileField";
 
-export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?: string; turnstileSiteKey?: string }) {
+export function LoginPanel({
+  nextPath = "",
+  turnstileSiteKey = "",
+  initialEmail = "",
+  notice = "",
+  onCreateAccount,
+}: {
+  nextPath?: string;
+  turnstileSiteKey?: string;
+  initialEmail?: string;
+  notice?: string;
+  onCreateAccount?: () => void;
+}) {
   const [mode, setMode] = useState<"password" | "magic">("password");
   const [showPassword, setShowPassword] = useState(false);
   const [state, action, pending] = useActionState(
@@ -29,7 +41,7 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
   );
 
   const awaitingMfa = state?.next === "mfa";
-  const email = state?.email || magicState?.email || "";
+  const email = state?.email || magicState?.email || initialEmail || "";
   const magicSent = Boolean(magicState?.email && !magicState?.next && !magicState?.error);
   const magicNeedsMfa = magicState?.next === "mfa" || magicState?.next === "mfa-setup";
 
@@ -73,6 +85,11 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
   if (mode === "magic") {
     return (
       <div className="auth-card">
+        {notice ? (
+          <p className="auth-switch-banner" role="status">
+            {notice}
+          </p>
+        ) : null}
         <form className="auth-form" action={magicAction}>
           <input type="hidden" name="next" value={nextPath} />
           <input type="hidden" name="step" value={magicSent ? "verify" : "request"} />
@@ -86,7 +103,7 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
               name="email"
               type="email"
               required
-              defaultValue={magicState?.email || ""}
+              defaultValue={magicState?.email || initialEmail || ""}
               autoComplete="username"
               placeholder="you@yourpractice.com"
             />
@@ -108,7 +125,12 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
             {magicPending ? "Working…" : magicSent ? "Verify code" : "Email me a code"}
           </button>
           <p className="auth-meta">
-            <button type="button" className="ws-text-link" onClick={() => setMode("password")} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>
+            <button
+              type="button"
+              className="ws-text-link"
+              onClick={() => setMode("password")}
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+            >
               Use password instead
             </button>
             {" · "}
@@ -121,6 +143,11 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
 
   return (
     <div className="auth-card">
+      {notice ? (
+        <p className="auth-switch-banner" role="status">
+          {notice}
+        </p>
+      ) : null}
       <form className="auth-form" action={action}>
         <label aria-hidden="true" className="auth-honeypot">
           Company website
@@ -133,6 +160,8 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
             name="email"
             type="email"
             required
+            key={initialEmail || "login-email"}
+            defaultValue={initialEmail}
             autoComplete="username"
             placeholder="you@yourpractice.com"
           />
@@ -147,6 +176,7 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
               autoComplete="current-password"
               minLength={8}
               placeholder="Enter your password"
+              autoFocus={Boolean(initialEmail)}
             />
             <button
               type="button"
@@ -168,13 +198,35 @@ export function LoginPanel({ nextPath = "", turnstileSiteKey = "" }: { nextPath?
           {pending ? "Signing in…" : "Sign in"}
         </button>
         <p className="auth-meta">
-          <button type="button" className="ws-text-link" onClick={() => setMode("magic")} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>
+          <button
+            type="button"
+            className="ws-text-link"
+            onClick={() => setMode("magic")}
+            style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+          >
             Email me a magic code
           </button>
           {" · "}
           <Link href="/claim-account">Claim invite</Link>
-          <br />
-          Staff catalog operators use the <Link href="/admin/login">admin login</Link>.
+          {onCreateAccount ? (
+            <>
+              <br />
+              Need a new account?{" "}
+              <button
+                type="button"
+                className="ws-text-link"
+                onClick={onCreateAccount}
+                style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+              >
+                Back to sign up
+              </button>
+            </>
+          ) : (
+            <>
+              <br />
+              Staff catalog operators use the <Link href="/admin/login">admin login</Link>.
+            </>
+          )}
         </p>
       </form>
     </div>
@@ -195,8 +247,13 @@ export function SignupPanel({
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
   const [turnstileReady, setTurnstileReady] = useState(!turnstileSiteKey);
+  const [view, setView] = useState<"signup" | "signin">("signup");
+  const [animating, setAnimating] = useState(false);
+  const [existingEmail, setExistingEmail] = useState(email || "");
+  const [panelKey, setPanelKey] = useState(0);
+
   const [signed, signupAction, pending] = useActionState(
-    async (_prev: { error?: string } | null, formData: FormData) => {
+    async (_prev: { error?: string; existing?: boolean; email?: string } | null, formData: FormData) => {
       if (turnstileSiteKey) {
         const token = String(formData.get("cf-turnstile-response") || "").trim();
         if (!token) {
@@ -211,111 +268,155 @@ export function SignupPanel({
     null,
   );
 
-  const error = signed?.error || localError;
+  useEffect(() => {
+    if (!signed?.existing || !signed.email) return;
+    setExistingEmail(signed.email);
+    setAnimating(true);
+    const t = window.setTimeout(() => {
+      setView("signin");
+      setPanelKey((k) => k + 1);
+      setAnimating(false);
+    }, 220);
+    return () => window.clearTimeout(t);
+  }, [signed?.existing, signed?.email]);
+
+  function backToSignup() {
+    setAnimating(true);
+    window.setTimeout(() => {
+      setView("signup");
+      setPanelKey((k) => k + 1);
+      setAnimating(false);
+      setLocalError("");
+    }, 220);
+  }
+
+  const error = signed?.existing ? "" : signed?.error || localError;
+
+  if (view === "signin") {
+    return (
+      <div className={`auth-swap ${animating ? "is-exit" : "is-enter"}`} key={`signin-${panelKey}`}>
+        <LoginPanel
+          turnstileSiteKey={turnstileSiteKey}
+          initialEmail={existingEmail}
+          notice={`Welcome back — ${existingEmail} already has an account. Sign in to continue.`}
+          onCreateAccount={backToSignup}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="auth-card">
-      <form
-        className="auth-form"
-        action={signupAction}
-        onSubmit={(e) => {
-          setLocalError("");
-          if (!turnstileSiteKey) return;
-          const token = String(
-            (e.currentTarget.elements.namedItem("cf-turnstile-response") as HTMLInputElement | null)?.value || "",
-          ).trim();
-          if (!token) {
-            e.preventDefault();
-            setLocalError("Wait until the security check says ready, then create the account.");
-          }
-        }}
-      >
-        <label aria-hidden="true" className="auth-honeypot">
-          Company website
-          <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
-        </label>
-        <input type="hidden" name="accountType" value={accountType} />
-        <input type="hidden" name="ref" value={refCode} />
-        <label className="auth-field">
-          <span>Email</span>
-          <input name="email" type="email" required defaultValue={email} autoComplete="username" />
-        </label>
-        <label className="auth-field">
-          <span>Password</span>
-          <span className="auth-password-wrap">
-            <input
-              name="password"
-              type={showPassword ? "text" : "password"}
-              required
-              minLength={10}
-              autoComplete="new-password"
-              placeholder="10+ chars, mixed case, number, symbol"
-            />
-            <button
-              type="button"
-              className="auth-password-toggle"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? "Hide" : "Show"}
-            </button>
-          </span>
-        </label>
-        <label className="auth-field">
-          <span>Your name</span>
-          <input name="name" required autoComplete="name" />
-        </label>
-        <label className="auth-field">
-          <span>Organization</span>
-          <input
-            name="legalName"
-            required
-            placeholder={accountType === "affiliate" ? "Affiliate / company name" : "Practice or clinic name"}
-          />
-        </label>
-        <label className="auth-field">
-          <span>6-digit security PIN</span>
-          <input
-            name="pin"
-            inputMode="numeric"
-            minLength={6}
-            maxLength={6}
-            required
-            autoComplete="off"
-            placeholder="Second factor for sign-in"
-          />
-        </label>
-        <TurnstileField
-          siteKey={turnstileSiteKey}
-          onStatusChange={(s) => {
-            setTurnstileReady(s.ready || !turnstileSiteKey);
-            if (s.error) setLocalError(s.error);
-            else if (s.ready) setLocalError("");
+    <div className={`auth-swap ${animating ? "is-exit" : "is-enter"}`} key={`signup-${panelKey}`}>
+      <div className="auth-card">
+        <form
+          className="auth-form"
+          action={signupAction}
+          onSubmit={(e) => {
+            setLocalError("");
+            if (!turnstileSiteKey) return;
+            const token = String(
+              (e.currentTarget.elements.namedItem("cf-turnstile-response") as HTMLInputElement | null)?.value || "",
+            ).trim();
+            if (!token) {
+              e.preventDefault();
+              setLocalError("Wait until the security check says ready, then create the account.");
+            }
           }}
-        />
-        {error ? (
-          <p className="auth-error" role="alert">
-            {error}
+        >
+          <label aria-hidden="true" className="auth-honeypot">
+            Company website
+            <input name="company_website" type="text" tabIndex={-1} autoComplete="off" />
+          </label>
+          <input type="hidden" name="accountType" value={accountType} />
+          <input type="hidden" name="ref" value={refCode} />
+          <label className="auth-field">
+            <span>Email</span>
+            <input name="email" type="email" required defaultValue={email} autoComplete="username" />
+          </label>
+          <label className="auth-field">
+            <span>Password</span>
+            <span className="auth-password-wrap">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={10}
+                autoComplete="new-password"
+                placeholder="10+ chars, mixed case, number, symbol"
+              />
+              <button
+                type="button"
+                className="auth-password-toggle"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </span>
+          </label>
+          <label className="auth-field">
+            <span>Your name</span>
+            <input name="name" required autoComplete="name" />
+          </label>
+          <label className="auth-field">
+            <span>Organization</span>
+            <input
+              name="legalName"
+              required
+              placeholder={accountType === "affiliate" ? "Affiliate / company name" : "Practice or clinic name"}
+            />
+          </label>
+          <label className="auth-field">
+            <span>6-digit security PIN</span>
+            <input
+              name="pin"
+              inputMode="numeric"
+              minLength={6}
+              maxLength={6}
+              required
+              autoComplete="off"
+              placeholder="Second factor for sign-in"
+            />
+          </label>
+          <TurnstileField
+            siteKey={turnstileSiteKey}
+            onStatusChange={(s) => {
+              setTurnstileReady(s.ready || !turnstileSiteKey);
+              if (s.error) setLocalError(s.error);
+              else if (s.ready) setLocalError("");
+            }}
+          />
+          {error ? (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <button
+            className="btn btn-accent auth-submit"
+            disabled={pending || (Boolean(turnstileSiteKey) && !turnstileReady)}
+          >
+            {pending
+              ? "Creating…"
+              : !turnstileReady && turnstileSiteKey
+                ? "Waiting for security check…"
+                : "Create account"}
+          </button>
+          <p className="auth-meta">
+            Already registered? <Link href="/login">Sign in</Link>
+            {accountType === "affiliate" ? (
+              <>
+                {" · "}
+                <Link href="/signup">Practitioner instead</Link>
+              </>
+            ) : (
+              <>
+                {" · "}
+                <Link href="/signup?type=affiliate">Affiliate instead</Link>
+              </>
+            )}
           </p>
-        ) : null}
-        <button className="btn btn-accent auth-submit" disabled={pending || (Boolean(turnstileSiteKey) && !turnstileReady)}>
-          {pending ? "Creating…" : !turnstileReady && turnstileSiteKey ? "Waiting for security check…" : "Create account"}
-        </button>
-        <p className="auth-meta">
-          Already registered? <Link href="/login">Sign in</Link>
-          {accountType === "affiliate" ? (
-            <>
-              {" · "}
-              <Link href="/signup">Practitioner instead</Link>
-            </>
-          ) : (
-            <>
-              {" · "}
-              <Link href="/signup?type=affiliate">Affiliate instead</Link>
-            </>
-          )}
-        </p>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }

@@ -286,7 +286,13 @@ export async function completeSignup(formData: FormData) {
     if (!bot.ok) return { error: bot.error || "Bot check failed." };
 
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) return { error: "That email already has an account. Sign in instead." };
+    if (existing) {
+      return {
+        error: "That email already has an account.",
+        existing: true as const,
+        email,
+      };
+    }
 
     let referringAffiliateId = "";
     let parentAffiliateProfileId: string | null = null;
