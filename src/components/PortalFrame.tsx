@@ -204,18 +204,18 @@ export function PortalFrame({
     <div className="portal">
       <aside className="side">
         <div className="side-top">
-          <Link href={home} aria-label="Dashboard">
+          <Link href={home} className="side-brand" aria-label="Dashboard">
             <Logo tone="white" />
           </Link>
           <div className="side-meta">
             <strong>{user.org.legalName}</strong>
-            {brandTagline ? <span>{brandTagline}</span> : null}
+            {brandTagline ? <span className="side-meta-extra">{brandTagline}</span> : null}
             <span>{sideLabel}</span>
-            {mode === "practice" ? <span>Rep · {user.org.assignedRep}</span> : null}
+            {mode === "practice" ? <span className="side-meta-extra">Rep · {user.org.assignedRep}</span> : null}
             <span className="side-user">{user.name}</span>
           </div>
           <form className="side-out-mobile" action={logout}>
-            <button className="btn btn-ghost" type="submit">
+            <button className="btn btn-ghost side-signout" type="submit">
               Sign out
             </button>
           </form>

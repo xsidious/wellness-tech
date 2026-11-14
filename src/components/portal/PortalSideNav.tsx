@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 export type PortalNavLink = { href: string; label: string; exact?: boolean; badge?: number };
@@ -13,28 +14,59 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export function PortalSideNav({ groups }: { groups: PortalNavGroup[] }) {
   const pathname = usePathname() || "/";
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   return (
-    <nav className="side-nav" aria-label="Practice workspace">
-      {groups.map((group) => (
-        <div key={group.label} className="side-group">
-          <p className="side-group-label">{group.label}</p>
-          <ul className="side-group-list">
-            {group.links.map((link) => {
-              const active = isActive(pathname, link.href, link.exact);
-              return (
-                <li key={link.href}>
-                  <Link href={link.href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
-                    <span className="side-dot" aria-hidden />
-                    <span className="side-link-label">{link.label}</span>
-                    {link.badge && link.badge > 0 ? <span className="side-badge">{link.badge > 99 ? "99+" : link.badge}</span> : null}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </nav>
+    <>
+      <button
+        type="button"
+        className="side-drawer-toggle"
+        aria-expanded={open}
+        aria-controls="portal-side-nav"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="nav-bars" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+        <span>{open ? "Close menu" : "Menu"}</span>
+      </button>
+      <nav
+        id="portal-side-nav"
+        className={`side-nav${open ? " is-open" : ""}`}
+        aria-label="Practice workspace"
+      >
+        {groups.map((group) => (
+          <div key={group.label} className="side-group">
+            <p className="side-group-label">{group.label}</p>
+            <ul className="side-group-list">
+              {group.links.map((link) => {
+                const active = isActive(pathname, link.href, link.exact);
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className={active ? "active" : undefined}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <span className="side-dot" aria-hidden />
+                      <span className="side-link-label">{link.label}</span>
+                      {link.badge && link.badge > 0 ? (
+                        <span className="side-badge">{link.badge > 99 ? "99+" : link.badge}</span>
+                      ) : null}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+    </>
   );
 }
