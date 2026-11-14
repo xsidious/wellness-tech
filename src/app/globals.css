@@ -588,11 +588,6 @@ textarea { min-height: 90px; }
   }
   .dash-head h1, .section h2, .band h2 { font-size: 1.55rem; }
   .rep { align-items: flex-start; }
-  .a11y-fab {
-    left: auto;
-    right: 14px;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  }
   .auth-footer .wrap { flex-direction: column; gap: 6px; }
   .auth-nav-links { gap: 8px; }
   .auth-nav-admin { display: none; }
@@ -1678,7 +1673,20 @@ textarea { min-height: 90px; }
 }
 
 /* Accessibility floating icon */
-.a11y-fab { position: fixed; left: 16px; bottom: 20px; z-index: 60; }
+.a11y-fab {
+  position: fixed;
+  left: 16px;
+  right: auto;
+  bottom: 20px;
+  z-index: 60;
+}
+@media (max-width: 800px) {
+  .a11y-fab {
+    left: auto;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+}
 .a11y-fab-btn {
   display: inline-flex;
   align-items: center;
