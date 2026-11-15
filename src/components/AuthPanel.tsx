@@ -226,6 +226,7 @@ export function SignupPanel({
   accountType,
   refCode,
   email,
+  clinicCode = "",
   turnstileSiteKey = "",
 }: {
   accountType: string;
@@ -242,8 +243,9 @@ export function SignupPanel({
   const [existingEmail, setExistingEmail] = useState(email || "");
   const [panelKey, setPanelKey] = useState(0);
 
+  type SignupState = { error?: string; existing?: boolean; email?: string } | null;
   const [signed, signupAction, pending] = useActionState(
-    async (_prev: { error?: string; existing?: boolean; email?: string } | null, formData: FormData) => {
+    async (_prev: SignupState, formData: FormData): Promise<SignupState> => {
       if (turnstileSiteKey) {
         const token = String(formData.get("cf-turnstile-response") || "").trim();
         if (!token) {
