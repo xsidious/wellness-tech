@@ -151,26 +151,29 @@ model PrescriberCredential {
 }
 
 model Product {
-  id                String   @id @default(cuid())
-  sku               String   @unique
-  rxcoreFormularyId String
-  name              String
-  productClass      String
-  category          String
-  form              String   @default("")
-  strength          String   @default("")
-  size              String   @default("")
-  budDays           Int      @default(0)
-  storage           String   @default("ambient")
-  rxRequired        Boolean  @default(false)
-  officeUse         Boolean  @default(false)
-  priceCents        Int
-  active            Boolean  @default(true)
-  orderable         Boolean  @default(true)
-  holdReason        String   @default("")
-  description       String   @default("")
-  updatedAt         DateTime @updatedAt
-  createdAt         DateTime @default(now())
+  id                  String    @id @default(cuid())
+  sku                 String    @unique
+  rxcoreFormularyId   String
+  name                String
+  productClass        String
+  category            String
+  form                String    @default("")
+  strength            String    @default("")
+  size                String    @default("")
+  slug                String    @default("")
+  budDays             Int       @default(0)
+  storage             String    @default("ambient")
+  rxRequired          Boolean   @default(false)
+  officeUse           Boolean   @default(false)
+  controlledSubstance Boolean   @default(false)
+  priceCents          Int
+  active              Boolean   @default(true)
+  orderable           Boolean   @default(true)
+  holdReason          String    @default("")
+  description         String    @default("")
+  lastSyncedAt        DateTime?
+  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
 }
 
 model PatientRef {
@@ -258,6 +261,10 @@ model Order {
   shippingMethod     String   @default("2_DAY")
   shipDestination    String   @default("PRACTICE")
   trackingNumber     String   @default("")
+  trackingCarrier    String   @default("")
+  trackingUrl        String   @default("")
+  lastWebhookAt      DateTime?
+  placementError     String   @default("")
   escriptStatus      String   @default("not_required")
   patientCipher      String   @default("")
   patientJson        String   @default("")

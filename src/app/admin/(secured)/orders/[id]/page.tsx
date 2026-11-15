@@ -8,12 +8,25 @@ import {
   StatusBadge,
   statusTone,
 } from "@/components/portal/Workspace";
-import { adminAdvanceOrder } from "@/lib/actions";
+import {
+  adminAdvanceOrder,
+  cancelEventideOrderAction,
+  refreshEventideOrderAction,
+  retryEventideOrderAction,
+} from "@/lib/actions";
 import { formatPrescriberLabel, resolveOrderPrescriber } from "@/lib/admin-clinical";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { trackingHref } from "@/lib/tracking";
 
-export default async function AdminOrderDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdminOrderDetail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; refreshed?: string; cancelled?: string; retried?: string }>;
+}) {
+  const q = await searchParams;
   const order = await prisma.order.findUnique({
     where: { id: (await params).id },
     include: {
@@ -78,6 +91,69 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
           </span>
         </div>
       </div>
+
+      {q.error ? <p className="error">{q.error}</p> : null}
+      {q.refreshed ? <p className="note">Refreshed status from VitaRelay.</p> : null}
+      {q.cancelled ? <p className="note">Cancellation requested with VitaRelay.</p> : null}
+      {q.retried ? <p className="note">Resubmitted to VitaRelay.</p> : null}
+      {order.placementError || order.splitMessage ? (
+        <p className="error">{order.placementError || order.splitMessage}</p>
+      ) : null}
+
+      <SectionCard
+        title="VitaRelay tracking"
+        description={
+          order.lastWebhookAt
+            ? `Last webhook ${order.lastWebhookAt.toLocaleString()}`
+            : "No webhook received yet — use refresh to poll."
+        }
+      >
+        <p>
+          <b>Order id:</b> {order.rxhereOrderId || "—"}
+        </p>
+        <p>
+          <b>Tracking:</b>{" "}
+          {order.trackingNumber ? (
+            trackingHref(order.trackingNumber, order.trackingUrl) ? (
+              <a href={trackingHref(order.trackingNumber, order.trackingUrl)!} target="_blank" rel="noreferrer">
+                {order.trackingCarrier ? `${order.trackingCarrier} · ` : ""}
+                {order.trackingNumber}
+              </a>
+            ) : (
+              order.trackingNumber
+            )
+          ) : (
+            "—"
+          )}
+        </p>
+        <div className="ws-head-actions" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
+          {(order.rxhereOrderId || order.rxcoreOrderId) &&
+          !["shipped", "delivered", "cancelled"].includes(order.status) ? (
+            <form action={cancelEventideOrderAction}>
+              <input type="hidden" name="orderId" value={order.id} />
+              <button className="btn btn-ghost" type="submit">
+                Cancel before ship
+              </button>
+            </form>
+          ) : null}
+          {order.rxhereOrderId || order.rxcoreOrderId ? (
+            <form action={refreshEventideOrderAction}>
+              <input type="hidden" name="orderId" value={order.id} />
+              <button className="btn btn-ghost" type="submit">
+                Refresh from VitaRelay
+              </button>
+            </form>
+          ) : null}
+          {!order.rxhereOrderId && (order.placementError || order.status === "on_hold") ? (
+            <form action={retryEventideOrderAction}>
+              <input type="hidden" name="orderId" value={order.id} />
+              <button className="btn btn-accent" type="submit">
+                Retry placement
+              </button>
+            </form>
+          ) : null}
+        </div>
+      </SectionCard>
 
       <ClinicalChartView
         chartRaw={order.clinicalChartJson || order.clinicalPatient?.clinicalChartJson}

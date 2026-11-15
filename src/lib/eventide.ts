@@ -33,6 +33,8 @@ export type EventidePrescriber = {
   phone?: string;
   licenseState?: string;
   licenseNumber?: string;
+  /** Required by VitaRelay when any line is a controlled substance. */
+  deaNumber?: string;
 };
 
 export type EventideItem = {
@@ -73,12 +75,29 @@ const EVENT_STATUS: Record<string, string> = {
   EXCEPTION: "delayed",
   CANCELLED: "cancelled",
   PAID: "submitted",
+  INVOICED: "submitted",
+  FULFILLED: "compounding",
   AWAITING_VERIFICATION: "received",
+  awaiting_payment: "submitted",
+  submitted: "submitted",
+  processing: "compounding",
+  ready_to_ship: "verified",
   paid: "submitted",
+  invoiced: "submitted",
   shipped: "shipped",
   delivered: "delivered",
   cancelled: "cancelled",
+  canceled: "cancelled",
   fulfilled: "compounding",
+  exception: "delayed",
+  "order.paid": "submitted",
+  "order.invoiced": "submitted",
+  "order.fulfilled": "compounding",
+  "order.shipped": "shipped",
+  "order.delivered": "delivered",
+  "order.exception": "delayed",
+  "order.cancelled": "cancelled",
+  "order.canceled": "cancelled",
 };
 
 function baseUrl() {
@@ -219,6 +238,126 @@ function errorMessage(data: unknown, status: number) {
   return `Eventide order failed (${status}).`;
 }
 
+function normalizeShippingDestination(
+  value?: PlacePrescriptionInput["shippingDestinationType"] | string | null,
+): "patient_direct" | "practice_office" | "distributor_office" {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (
+    raw === "practice" ||
+    raw === "practice_office" ||
+    raw === "office" ||
+    raw === "office_stock" ||
+    raw === "provider_clinic" ||
+    raw === "clinic"
+  ) {
+    return "practice_office";
+  }
+  if (raw === "distributor" || raw === "distributor_office" || raw === "wt_office") {
+    return "distributor_office";
+  }
+  return "patient_direct";
+}
+
+export type VitaRelayPrescriberRoster = {
+  id?: string;
+  full_name?: string;
+  npi_number?: string;
+  license_state?: string;
+  license_number?: string;
+  role?: string;
+  npi_verified?: boolean;
+  has_dea?: boolean;
+  dea_last2?: string;
+};
+
+export async function listPrescribers() {
+  return eventideFetch("/prescribers");
+}
+
+export async function upsertPrescriber(input: {
+  fullName: string;
+  npiNumber: string;
+  deaNumber?: string;
+  licenseState: string;
+  licenseNumber: string;
+  role?: string;
+}) {
+  const npi = input.npiNumber.replace(/\D/g, "");
+  if (!/^\d{10}$/.test(npi)) {
+    return { ok: false as const, status: 400, error: "NPI must be 10 digits.", data: {} };
+  }
+  const body: Record<string, string> = {
+    full_name: input.fullName.trim(),
+    npi_number: npi,
+    license_state: input.licenseState.trim().toUpperCase().slice(0, 2),
+    license_number: input.licenseNumber.trim(),
+    role: input.role || "provider",
+  };
+  if (input.deaNumber?.trim()) body.dea_number = input.deaNumber.trim().toUpperCase();
+  const result = await eventideFetch("/prescribers", { method: "POST", body: JSON.stringify(body) });
+  if (!result.ok) {
+    return { ok: false as const, status: result.status, error: errorMessage(result.data, result.status), data: result.data };
+  }
+  return { ok: true as const, status: result.status, data: result.data };
+}
+
+/** Sync a local credentialed user onto the VitaRelay practice roster. */
+export async function syncPrescriberToVitaRelay(userId: string) {
+  if (!eventideConfigured()) return { ok: false as const, error: "VitaRelay API key not configured." };
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { credential: true } });
+  if (!user?.credential?.npi) return { ok: false as const, error: "User has no NPI credential." };
+  let dea = "";
+  try {
+    const { decryptField } = await import("@/lib/crypto");
+    const cipher = user.credential.deaCipher || "";
+    if (cipher) {
+      // Accept either encrypted packs or legacy plaintext during migration.
+      dea = cipher.includes(":") ? decryptField(cipher) || "" : cipher;
+    }
+  } catch {
+    dea = user.credential.deaCipher || "";
+  }
+  let licenses: Array<{ state: string; licenseNumber: string }> = [];
+  try {
+    licenses = JSON.parse(user.credential.licensesJson || "[]") as Array<{ state: string; licenseNumber: string }>;
+  } catch {
+    licenses = [];
+  }
+  const primary = licenses[0];
+  const licenseState =
+    primary?.state ||
+    process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE?.trim() ||
+    "";
+  const licenseNumber =
+    primary?.licenseNumber ||
+    process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER?.trim() ||
+    "";
+  if (!licenseState || !licenseNumber) {
+    return { ok: false as const, error: "Prescriber license state/number required before roster sync." };
+  }
+  return upsertPrescriber({
+    fullName: user.credential.displayName || user.name,
+    npiNumber: user.credential.npi,
+    deaNumber: dea || undefined,
+    licenseState,
+    licenseNumber,
+  });
+}
+
+export async function getCatalogProduct(idOrSlug: string) {
+  return eventideFetch(`/catalog/${encodeURIComponent(idOrSlug)}`);
+}
+
+export async function getPrescriberRoute(params: { state?: string; patientId?: string }) {
+  const q = new URLSearchParams();
+  if (params.state) q.set("state", params.state);
+  if (params.patientId) q.set("patient_id", params.patientId);
+  return eventideFetch(`/prescriber-route?${q.toString()}`);
+}
+
 export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
   if (!eventideConfigured()) {
     const sandboxId = `EVT-${randomBytes(4).toString("hex").toUpperCase()}`;
@@ -240,11 +379,35 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
       return {
         ok: false as const,
         status: 400,
-        error: `No Eventide catalog match for ${item.name || item.sku}. Sync the formulary, then retry.`,
+        error: `No VitaRelay catalog match for ${item.name || item.sku}. Sync the formulary, then retry.`,
         data: { sku: item.sku, name: item.name },
       };
     }
     resolved.push({ ...item, platformProductId });
+  }
+
+  const catalogMeta = await prisma.product.findMany({
+    where: {
+      OR: [
+        { sku: { in: resolved.map((item) => item.sku) } },
+        { rxcoreFormularyId: { in: resolved.map((item) => item.platformProductId) } },
+      ],
+    },
+    select: { sku: true, rxcoreFormularyId: true, controlledSubstance: true },
+  });
+  const controlled = catalogMeta.some((row) => row.controlledSubstance);
+  const dea =
+    (input.prescriber?.deaNumber || process.env.EVENTIDE_PRESCRIBER_DEA || process.env.VITARELAY_PRESCRIBER_DEA || "")
+      .trim()
+      .toUpperCase();
+  if (controlled && !dea) {
+    return {
+      ok: false as const,
+      status: 400,
+      error:
+        "This order includes a controlled substance. Add the prescriber DEA number on the chart/credential, then retry.",
+      data: { controlled: true },
+    };
   }
 
   const defaultNpi = process.env.EVENTIDE_PRESCRIBER_NPI?.trim() || process.env.LAB_ORDERING_PHYSICIAN_NPI?.trim() || "";
@@ -253,7 +416,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     return {
       ok: false as const,
       status: 400,
-      error: "A valid 10-digit prescriber NPI is required for Eventide (set EVENTIDE_PRESCRIBER_NPI).",
+      error: "A valid 10-digit prescriber NPI is required for VitaRelay (set EVENTIDE_PRESCRIBER_NPI).",
       data: {},
     };
   }
@@ -271,7 +434,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     return {
       ok: false as const,
       status: 400,
-      error: "Prescriber license number is required for Eventide (set EVENTIDE_PRESCRIBER_LICENSE_NUMBER).",
+      error: "Prescriber license number is required for VitaRelay (set EVENTIDE_PRESCRIBER_LICENSE_NUMBER).",
       data: {},
     };
   }
@@ -281,9 +444,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     process.env.EVENTIDE_PRESCRIBER_NAME?.trim() ||
     "Licensed Prescriber";
 
-  const dest =
-    input.shippingDestinationType ||
-    (input.shippingMethod === "OVERNIGHT" ? "patient_direct" : "patient_direct");
+  const dest = normalizeShippingDestination(input.shippingDestinationType);
 
   const body = {
     external_order_id: input.partnerOrderId,
@@ -326,6 +487,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
       full_name: fullName,
       npi_number: npi,
       licenses: [{ state: licenseState, number: licenseNumber }],
+      ...(dea ? { dea_number: dea } : {}),
     },
   };
 
@@ -387,6 +549,10 @@ export async function probeFormularyCatalog(): Promise<
       price?: number;
       category?: string;
       description?: string;
+      productClass?: string;
+      controlledSubstance?: boolean;
+      slug?: string;
+      requiresPrescription?: boolean;
     }[]
   | null
 > {
@@ -401,6 +567,10 @@ export async function probeFormularyCatalog(): Promise<
     price?: number;
     category?: string;
     description?: string;
+    productClass?: string;
+    controlledSubstance?: boolean;
+    slug?: string;
+    requiresPrescription?: boolean;
   }> = [];
 
   for (let page = 1; page <= 30; page += 1) {
@@ -413,14 +583,28 @@ export async function probeFormularyCatalog(): Promise<
     for (const item of rows) {
       const id = String(item.id || "").trim();
       if (!id) continue;
+      const type = item.type ? String(item.type) : "503a";
       all.push({
         sku: id,
         name: item.name ? String(item.name) : undefined,
+        medication: item.name ? String(item.name) : undefined,
         strength: Array.isArray(item.strengths) ? String(item.strengths[0] || "") : undefined,
+        size: item.volume ? String(item.volume) : undefined,
         form: item.dosage_form ? String(item.dosage_form) : undefined,
         price: typeof item.price_cents === "number" ? item.price_cents / 100 : undefined,
-        category: item.category ? String(item.category) : undefined,
+        category: item.category_label
+          ? String(item.category_label)
+          : item.category
+            ? String(item.category)
+            : undefined,
         description: item.description ? String(item.description) : undefined,
+        productClass: type,
+        controlledSubstance: Boolean(item.controlled_substance),
+        slug: item.slug ? String(item.slug) : undefined,
+        requiresPrescription:
+          item.requires_prescription != null
+            ? Boolean(item.requires_prescription)
+            : type === "503a" || type === "503b",
       });
     }
     if (rows.length < 100) break;
@@ -509,9 +693,13 @@ export async function notifyKianStatus(payload: {
   status: string;
   trackingNumber?: string;
   carrier?: string;
+  trackingUrl?: string;
   event: string;
   occurredAt?: string;
   reason?: string;
+  rxhereOrderId?: string;
+  /** Originating clinic site key (kian-prive, facial-design, …). */
+  partnerSite?: string;
 }) {
   const url = process.env.KIAN_STATUS_WEBHOOK_URL?.trim();
   const secret = process.env.KIAN_PARTNER_SECRET?.trim() || process.env.WT_PARTNER_ORDER_SECRET?.trim();
@@ -533,10 +721,98 @@ export async function notifyKianStatus(payload: {
   }
   try {
     const { touchConnectedSiteWebhook } = await import("@/lib/connected-sites");
-    await touchConnectedSiteWebhook("kian-prive", ok);
+    await touchConnectedSiteWebhook(payload.partnerSite || "kian-prive", ok);
   } catch {
     // Monitoring updates are best-effort.
   }
+}
+
+function trackingUrlFromPayload(trackingNumber?: string | null, trackingUrl?: string | null, carrier?: string | null) {
+  if (trackingUrl?.trim()) return trackingUrl.trim();
+  const t = (trackingNumber || "").trim();
+  if (!t) return "";
+  const c = String(carrier || "").toLowerCase();
+  if (c.includes("ups") || /^1Z/i.test(t)) return `https://www.ups.com/track?tracknum=${encodeURIComponent(t)}`;
+  if (c.includes("fedex")) return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(t)}`;
+  if (c.includes("usps") || t.startsWith("94") || t.startsWith("93")) {
+    return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(t)}`;
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(`tracking ${t}`)}`;
+}
+
+/** Poll VitaRelay for current order status (webhook backup). */
+export async function refreshOrderFromEventide(orderId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) return { ok: false as const, error: "Order not found." };
+  const remoteId = order.rxhereOrderId || order.rxcoreOrderId;
+  if (!remoteId) return { ok: false as const, error: "No VitaRelay order id on this order yet." };
+
+  const result = await getOrderStatus(remoteId);
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      error: errorMessage(result.data, result.status),
+      status: result.status,
+    };
+  }
+
+  const data = (result.data as { data?: Record<string, unknown> }).data || (result.data as Record<string, unknown>);
+  const remoteStatus = String(data.status || data.order_status || "").trim();
+  const status =
+    EVENT_STATUS[remoteStatus] ||
+    EVENT_STATUS[remoteStatus.toLowerCase()] ||
+    EVENT_STATUS[`order.${remoteStatus.toLowerCase()}`] ||
+    order.status;
+  const trackingNumber = String(data.tracking_number || data.trackingNumber || order.trackingNumber || "");
+  const trackingCarrier = String(data.tracking_carrier || data.carrier || order.trackingCarrier || "");
+  const trackingUrl = trackingUrlFromPayload(
+    trackingNumber,
+    String(data.tracking_url || data.trackingUrl || order.trackingUrl || ""),
+    trackingCarrier,
+  );
+
+  await prisma.order.update({
+    where: { id: order.id },
+    data: {
+      status,
+      trackingNumber,
+      trackingCarrier,
+      trackingUrl,
+      lastWebhookAt: new Date(),
+      placementError: "",
+    },
+  });
+  await prisma.orderLine.updateMany({ where: { orderId: order.id }, data: { lineStatus: status } });
+  await prisma.orderEvent.create({
+    data: {
+      orderId: order.id,
+      eventId: createHash("sha256").update(`poll|${remoteId}|${remoteStatus}|${Date.now()}`).digest("hex"),
+      type: `poll.${remoteStatus || status}`,
+      payload: JSON.stringify(result.data),
+    },
+  });
+
+  await notifyKianStatus({
+    externalRef: order.partnerExternalRef || order.invoiceNumber,
+    status,
+    trackingNumber: trackingNumber || undefined,
+    carrier: trackingCarrier || undefined,
+    trackingUrl: trackingUrl || undefined,
+    event: `poll.${remoteStatus || status}`,
+    rxhereOrderId: remoteId,
+    partnerSite: order.source || undefined,
+  });
+
+  return { ok: true as const, status, trackingNumber, trackingCarrier, trackingUrl, remoteStatus };
+}
+
+/** Sandbox-only: drive VitaRelay order through paid → shipped → delivered. */
+export async function simulateEventideOrder(remoteOrderId: string, event?: string) {
+  const path = `/orders/${encodeURIComponent(remoteOrderId)}/simulate`;
+  return eventideFetch(path, {
+    method: "POST",
+    body: JSON.stringify(event ? { event } : {}),
+  });
 }
 
 export async function ingestRxHereWebhook(body: string, request: Request) {
@@ -544,26 +820,32 @@ export async function ingestRxHereWebhook(body: string, request: Request) {
     return { ok: false as const, status: 401, error: "Invalid webhook secret." };
   }
   const payload = JSON.parse(body) as {
+    id?: string;
     reference?: string;
     logisticsReference?: string;
     event?: string;
     trackingNumber?: string | null;
     carrier?: string | null;
+    trackingUrl?: string | null;
     description?: string;
     reason?: string | null;
     occurredAt?: string;
     type?: string;
     data?: {
       order_id?: string;
+      external_order_id?: string;
       reference?: string;
       tracking_number?: string;
       tracking_carrier?: string;
+      tracking_url?: string;
+      status?: string;
     };
   };
 
   const event = payload.event || payload.type || "";
   const reference =
     payload.reference ||
+    payload.data?.external_order_id ||
     payload.data?.reference ||
     payload.data?.order_id ||
     payload.logisticsReference ||
@@ -572,9 +854,18 @@ export async function ingestRxHereWebhook(body: string, request: Request) {
     return { ok: false as const, status: 400, error: "Missing reference or event." };
   }
 
-  const eventId = createHash("sha256")
-    .update(`${reference}|${event}|${payload.occurredAt || ""}`)
-    .digest("hex");
+  const deliveryHeader =
+    request.headers.get("x-webhook-delivery") ||
+    request.headers.get("x-vitarelay-delivery-id") ||
+    request.headers.get("x-webhook-delivery-id") ||
+    request.headers.get("x-delivery-id") ||
+    payload.id ||
+    "";
+  const eventId =
+    deliveryHeader.trim() ||
+    createHash("sha256")
+      .update(`${reference}|${event}|${payload.occurredAt || ""}`)
+      .digest("hex");
   const duplicate = await prisma.orderEvent.findUnique({ where: { eventId } });
   if (duplicate) return { ok: true as const, duplicate: true };
 
@@ -594,7 +885,18 @@ export async function ingestRxHereWebhook(body: string, request: Request) {
 
   if (!order) return { ok: false as const, status: 404, error: "Order not found." };
 
-  const status = EVENT_STATUS[event] || EVENT_STATUS[event.replace(/^order\./, "")] || order.status;
+  const statusKey = event.replace(/^order\./, "");
+  const status = EVENT_STATUS[event] || EVENT_STATUS[statusKey] || EVENT_STATUS[statusKey.toUpperCase()] || order.status;
+  const trackingNumber =
+    payload.trackingNumber || payload.data?.tracking_number || order.trackingNumber || "";
+  const trackingCarrier =
+    payload.carrier || payload.data?.tracking_carrier || order.trackingCarrier || "";
+  const trackingUrl = trackingUrlFromPayload(
+    trackingNumber,
+    payload.trackingUrl || payload.data?.tracking_url || order.trackingUrl,
+    trackingCarrier,
+  );
+
   await prisma.orderEvent.create({
     data: { orderId: order.id, eventId, type: event, payload: body },
   });
@@ -605,13 +907,17 @@ export async function ingestRxHereWebhook(body: string, request: Request) {
     where: { id: order.id },
     data: {
       status,
-      trackingNumber: payload.trackingNumber || payload.data?.tracking_number || order.trackingNumber,
+      trackingNumber,
+      trackingCarrier,
+      trackingUrl,
+      lastWebhookAt: new Date(),
       rxhereOrderId: payload.logisticsReference || payload.data?.order_id || order.rxhereOrderId,
+      placementError: "",
     },
   });
   await prisma.orderLine.updateMany({ where: { orderId: order.id }, data: { lineStatus: status } });
 
-  if ((event === "DELIVERED" || event === "order.delivered") && order.org.referringAffiliateId) {
+  if ((event === "DELIVERED" || event === "order.delivered" || status === "delivered") && order.org.referringAffiliateId) {
     const affiliate = await prisma.affiliateProfile.findUnique({ where: { userId: order.org.referringAffiliateId } });
     if (affiliate) {
       let eligible = 0;
@@ -653,11 +959,14 @@ export async function ingestRxHereWebhook(body: string, request: Request) {
   await notifyKianStatus({
     externalRef: order.partnerExternalRef || order.invoiceNumber,
     status,
-    trackingNumber: payload.trackingNumber || payload.data?.tracking_number || undefined,
-    carrier: payload.carrier || payload.data?.tracking_carrier || undefined,
+    trackingNumber: trackingNumber || undefined,
+    carrier: trackingCarrier || undefined,
+    trackingUrl: trackingUrl || undefined,
     event,
     occurredAt: payload.occurredAt,
     reason: payload.reason || undefined,
+    rxhereOrderId: payload.logisticsReference || payload.data?.order_id || order.rxhereOrderId || undefined,
+    partnerSite: order.source || undefined,
   });
 
   return { ok: true as const, duplicate: false, status };

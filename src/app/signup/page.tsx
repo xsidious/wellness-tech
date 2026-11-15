@@ -11,10 +11,19 @@ export const metadata: Metadata = buildSeoMetadata({
   canonicalPath: "/signup",
 });
 
-export default async function SignupPage({ searchParams }: { searchParams: Promise<{ type?: string; ref?: string; email?: string }> }) {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string; ref?: string; email?: string; clinic?: string }>;
+}) {
   const query = await searchParams;
   const accountType = query.type === "affiliate" || query.type === "telehealth" ? query.type : "practice";
-  const title = accountType === "affiliate" ? "Join as an affiliate." : "Open a practice account.";
+  const clinicCode = (query.clinic || "").trim().toLowerCase();
+  const title = clinicCode
+    ? "Join your clinic workspace."
+    : accountType === "affiliate"
+      ? "Join as an affiliate."
+      : "Open a practice account.";
   const visual = accountType === "affiliate" ? photos.equipment : photos.hero;
   const isAffiliate = accountType === "affiliate";
   return (
@@ -23,13 +32,18 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         <div className="auth-stage-grid">
           <div className="auth-panel-col">
             <div className="auth-panel-inner">
-              <p className="kicker auth-kicker">{isAffiliate ? "Affiliate signup" : "Step 1 · Account"}</p>
+              <p className="kicker auth-kicker">
+                {clinicCode ? "Clinic invite" : isAffiliate ? "Affiliate signup" : "Step 1 · Account"}
+              </p>
               <h1 className="auth-title">{title}</h1>
               <p className="auth-lede">
-                {isAffiliate
-                  ? "Create your affiliate login, then sign in to get your referral link."
-                  : "Create your login first. Prescribers continue to NPI and license verification next"}
-                {query.ref ? <> · referral <strong>{query.ref}</strong></> : null}.
+                {clinicCode
+                  ? `Create your login for clinic code ${clinicCode}. You will land in that clinic’s Wellness Tech portal.`
+                  : isAffiliate
+                    ? "Create your affiliate login, then sign in to get your referral link."
+                    : "Create your login first. Prescribers continue to NPI and license verification next"}
+                {query.ref ? <> · referral <strong>{query.ref}</strong></> : null}
+                {!clinicCode ? "." : null}
               </p>
               <p className="signup-type-switch" role="navigation" aria-label="Account type">
                 <Link
@@ -86,6 +100,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
                 accountType={accountType}
                 refCode={query.ref || ""}
                 email={query.email || ""}
+                clinicCode={clinicCode}
                 turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ""}
               />
               <p className="auth-aside">

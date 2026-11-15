@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { audit } from "@/lib/audit";
+import { encryptField } from "@/lib/crypto";
 import { sendTransactionalEmail } from "@/lib/email";
 import { requireUser, rolesOf } from "@/lib/guard";
 import { notifyOrg } from "@/lib/notifications";
@@ -99,9 +100,18 @@ export async function inviteTeamMember(formData: FormData) {
               ? [{ state: String(formData.get("licenseState")), licenseNumber: String(formData.get("licenseNumber") || "") }]
               : [],
           ),
-          deaCipher: String(formData.get("dea") || ""),
+          deaCipher: (() => {
+            const dea = String(formData.get("dea") || "").trim();
+            return dea ? encryptField(dea) : "";
+          })(),
         },
       });
+      try {
+        const { syncPrescriberToVitaRelay } = await import("@/lib/eventide");
+        await syncPrescriberToVitaRelay(inviteeId);
+      } catch {
+        /* roster sync best-effort */
+      }
     }
   }
 

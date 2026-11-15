@@ -15,7 +15,7 @@ export type PharmacyPartner = {
 export const PHARMACY_NETWORK: PharmacyPartner[] = [
   {
     id: "eventide-rxhere",
-    name: "Eventide / RxHere Network",
+    name: "Eventide / VitaRelay Network",
     type: "Hybrid",
     region: "National routing",
     specialties: ["GLP-1", "Peptides", "Hormone", "Dermatology compounds"],
@@ -26,7 +26,7 @@ export const PHARMACY_NETWORK: PharmacyPartner[] = [
       "Cold-chain + ambient SKUs",
       "Order status webhooks",
     ],
-    erp: ["RxHere Partner API", "Eventide fulfillment"],
+    erp: ["VitaRelay Practice API", "Eventide fulfillment"],
     sla: "Most compounds ship within 1–3 business days after clinical clearance",
     status: "online",
     description:

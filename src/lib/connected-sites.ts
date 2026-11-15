@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ensureKianPartnerOrg } from "@/lib/partner-org";
+import { ensureAllPartnerClinicOrgs, ensurePartnerOrgForSite, normalizePartnerSite } from "@/lib/partner-org";
 
 function parseJson<T>(raw: string, fallback: T): T {
   try {
@@ -114,8 +114,11 @@ const DEFAULT_SITES: SeedSite[] = [
 ];
 
 export async function ensureConnectedSites() {
-  const { org } = await ensureKianPartnerOrg();
+  await ensureAllPartnerClinicOrgs();
   for (const seed of DEFAULT_SITES) {
+    const siteKey = normalizePartnerSite(seed.sourceKey || seed.slug);
+    const { org } = await ensurePartnerOrgForSite(siteKey);
+    const existing = await prisma.connectedSite.findUnique({ where: { slug: seed.slug } });
     await prisma.connectedSite.upsert({
       where: { slug: seed.slug },
       create: {
@@ -127,10 +130,13 @@ export async function ensureConnectedSites() {
         displayName: seed.displayName,
         kind: seed.kind,
         sourceKey: seed.sourceKey,
+        // Always keep ConnectedSite tied to the clinic's own practice org.
         orgId: org.id,
         statusWebhookPath: seed.statusWebhookPath,
         overviewPath: seed.overviewPath,
         // Keep operator-edited baseUrl/notes if already set.
+        ...(existing?.baseUrl ? {} : { baseUrl: seed.baseUrl }),
+        ...(existing?.notes ? {} : { notes: seed.notes }),
       },
     });
   }

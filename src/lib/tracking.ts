@@ -1,5 +1,9 @@
-/** Best-effort carrier deep link from a tracking number. */
-export function trackingHref(trackingNumber: string | null | undefined): string | null {
+/** Prefer an explicit tracking URL, else best-effort carrier deep link from the number. */
+export function trackingHref(
+  trackingNumber: string | null | undefined,
+  trackingUrl?: string | null,
+): string | null {
+  if (trackingUrl?.trim()) return trackingUrl.trim();
   const t = (trackingNumber || "").trim();
   if (!t) return null;
   if (/^1Z[0-9A-Z]+$/i.test(t)) {

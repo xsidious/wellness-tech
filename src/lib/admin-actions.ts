@@ -589,3 +589,14 @@ export async function adminProvisionAccount(
     loginUrl: `${appUrl}/login`,
   };
 }
+
+/** Provision / link human portal owners for every partner clinic org. */
+export async function adminProvisionClinicAccounts(formData: FormData) {
+  const user = await requireAdmin();
+  const reset = String(formData.get("resetPasswords") || "") === "1";
+  const { provisionClinicPortalAccounts } = await import("@/lib/clinic-accounts");
+  const rows = await provisionClinicPortalAccounts({ resetPasswords: reset, actorId: user.id });
+  revalidatePath("/admin/practices");
+  revalidatePath("/admin/sites");
+  return { ok: true as const, reset, accounts: rows };
+}

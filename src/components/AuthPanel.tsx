@@ -231,6 +231,7 @@ export function SignupPanel({
   accountType: string;
   refCode: string;
   email: string;
+  clinicCode?: string;
   turnstileSiteKey?: string;
 }) {
   const [showPassword, setShowPassword] = useState(false);
@@ -318,6 +319,7 @@ export function SignupPanel({
           </label>
           <input type="hidden" name="accountType" value={accountType} />
           <input type="hidden" name="ref" value={refCode} />
+          {clinicCode ? <input type="hidden" name="clinic" value={clinicCode} /> : null}
           <label className="auth-field">
             <span>Email</span>
             <input name="email" type="email" required defaultValue={email} autoComplete="username" />
@@ -352,9 +354,20 @@ export function SignupPanel({
             <input
               name="legalName"
               required
-              placeholder={accountType === "affiliate" ? "Affiliate / company name" : "Practice or clinic name"}
+              placeholder={
+                clinicCode
+                  ? "Your name at this clinic"
+                  : accountType === "affiliate"
+                    ? "Affiliate / company name"
+                    : "Practice or clinic name"
+              }
             />
           </label>
+          {clinicCode ? (
+            <p className="auth-meta">
+              Joining clinic workspace <strong>{clinicCode}</strong> — you will see that clinic’s orders and patients.
+            </p>
+          ) : null}
           <PinField label="6-digit security PIN" placeholder="Second factor for sign-in" />
           <TurnstileField
             siteKey={turnstileSiteKey}

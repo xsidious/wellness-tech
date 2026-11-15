@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { isProductClass, routeSource, shippingCents } from "@/lib/rules";
-import { ensureKianPartnerOrg, partnerSecretOk } from "@/lib/partner-org";
+import { ensurePartnerOrgForSite, normalizePartnerSite, partnerSecretOk } from "@/lib/partner-org";
 import { openRxcoreOrder } from "@/lib/rxcore";
 import { packPatient, type RxHereAddress, type RxHerePatient, type RxHerePrescriber } from "@/lib/rxhere";
 import type { ClinicalChartPackage } from "@/lib/clinical-chart";
@@ -24,6 +24,7 @@ type PartnerBody = {
   partnerSite?: string;
   notes?: string;
   shippingMethod?: "2_DAY" | "OVERNIGHT";
+  shippingDestinationType?: "patient_direct" | "practice_office" | "distributor_office" | string;
   kianIntakeId?: string | null;
   clinicalChart?: ClinicalChartPackage | null;
   lines?: PartnerLine[];
@@ -168,7 +169,9 @@ export async function POST(request: Request) {
     address,
   };
 
-  const { org, user } = await ensureKianPartnerOrg();
+  const headerSite = request.headers.get("x-wt-partner-site");
+  const partnerSite = normalizePartnerSite(body.partnerSite || headerSite || "kian-prive");
+  const { org, user } = await ensurePartnerOrgForSite(partnerSite);
   const packed = packPatient(patient);
   let subtotal = 0;
   const storages: string[] = [];
@@ -206,12 +209,6 @@ export async function POST(request: Request) {
   const signatures = chart?.signatures || [];
   const intakePayload = chart?.intake?.payload || {};
   const therapy = chart?.therapy || {};
-  const partnerSite =
-    String(body.partnerSite || "kian-prive")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, "-")
-      .replace(/^-|-$/g, "") || "kian-prive";
 
   const clinicalPatient = await prisma.clinicalPatient.upsert({
     where: {
@@ -262,18 +259,14 @@ export async function POST(request: Request) {
     },
   });
 
-  const invoicePrefix =
-    partnerSite === "kian-prive"
-      ? "WT-KIAN"
-      : partnerSite === "threefold-strength"
-        ? "WT-TFS"
-        : partnerSite === "4everglow"
-          ? "WT-4EG"
-          : partnerSite === "facial-design"
-            ? "WT-FDS"
-            : partnerSite === "hope-and-haven"
-              ? "WT-HAH"
-              : `WT-${partnerSite.slice(0, 6).toUpperCase()}`;
+  const invoicePrefixBySite: Record<string, string> = {
+    "kian-prive": "WT-KIAN",
+    "threefold-strength": "WT-TFS",
+    "4everglow": "WT-4EG",
+    "facial-design": "WT-FDS",
+    "hope-and-haven": "WT-HAH",
+  };
+  const invoicePrefix = invoicePrefixBySite[partnerSite] || `WT-${partnerSite.slice(0, 6).toUpperCase()}`;
 
   const order = await prisma.order.create({
     data: {
@@ -289,6 +282,11 @@ export async function POST(request: Request) {
       source: partnerSite,
       partnerExternalRef: externalRef,
       shippingMethod: body.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
+      shipDestination:
+        body.shippingDestinationType === "practice_office" ||
+        body.shippingDestinationType === "provider_clinic"
+          ? "PRACTICE"
+          : "PATIENT",
       notes: [body.notes || "", `Partner site: ${partnerSite}`, `Customer: ${email}`]
         .filter(Boolean)
         .join("\n"),

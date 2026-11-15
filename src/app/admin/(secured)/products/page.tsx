@@ -11,16 +11,21 @@ export default async function AdminProducts({
 }) {
   const query = await searchParams;
   const products = await prisma.product.findMany({ orderBy: { name: "asc" } });
+  const lastSynced = products.reduce<Date | null>((latest, product) => {
+    if (!product.lastSyncedAt) return latest;
+    if (!latest || product.lastSyncedAt > latest) return product.lastSyncedAt;
+    return latest;
+  }, null);
   return (
     <div className="ws-stack">
       <PageHeader
         kicker="Catalog"
         title="Formulary"
-        lede="Network product catalog. Sync pulls Partner API with a local formulary fallback — no deploy required for edits."
+        lede="VitaRelay Practice API catalog. Sync pulls class, controlled flags, and practice wholesale prices."
         actions={
           <form action={syncRxHereFormularyAction}>
             <button className="btn btn-accent" type="submit">
-              Sync formulary
+              Sync VitaRelay catalog
             </button>
           </form>
         }
@@ -30,6 +35,11 @@ export default async function AdminProducts({
           Synced {query.synced} SKUs from {query.source || "formulary"}.
         </p>
       ) : null}
+      {lastSynced ? (
+        <p className="muted">Last successful sync: {lastSynced.toLocaleString()}</p>
+      ) : (
+        <p className="muted">No VitaRelay sync recorded yet.</p>
+      )}
       {query.error ? <p className="error">{query.error}</p> : null}
       <SectionCard title={`${products.length} SKUs`} flush>
         <div className="table-wrap">
@@ -42,6 +52,7 @@ export default async function AdminProducts({
                 <th>Category</th>
                 <th>Price</th>
                 <th>Rx</th>
+                <th>CS</th>
                 <th>Orderable</th>
               </tr>
             </thead>
@@ -50,7 +61,7 @@ export default async function AdminProducts({
                 <tr key={product.id}>
                   <td>
                     <Link href={`/admin/products/${product.id}`}>
-                      <b>{product.sku}</b>
+                      <b>{product.sku.slice(0, 8)}…</b>
                     </Link>
                   </td>
                   <td>{product.name}</td>
@@ -58,6 +69,9 @@ export default async function AdminProducts({
                   <td className="muted">{product.category}</td>
                   <td>{money(product.priceCents)}</td>
                   <td>{product.rxRequired ? <StatusBadge tone="info">Rx</StatusBadge> : "—"}</td>
+                  <td>
+                    {product.controlledSubstance ? <StatusBadge tone="danger">CS</StatusBadge> : "—"}
+                  </td>
                   <td>{product.orderable ? <StatusBadge tone="ok">Yes</StatusBadge> : <StatusBadge tone="danger">No</StatusBadge>}</td>
                 </tr>
               ))}

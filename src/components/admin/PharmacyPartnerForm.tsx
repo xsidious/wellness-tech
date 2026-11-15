@@ -58,7 +58,7 @@ export function PharmacyPartnerForm({
         <div className="ws-kv">
           <label>
             <span>Display name *</span>
-            <input name="name" defaultValue={d.name || ""} required placeholder="Eventide / RxHere Network" />
+            <input name="name" defaultValue={d.name || ""} required placeholder="Eventide / VitaRelay Network" />
           </label>
           <label>
             <span>Legal entity name</span>
@@ -211,7 +211,7 @@ export function PharmacyPartnerForm({
         </label>
         <label className="escript-field">
           <span>ERP / integrations</span>
-          <textarea name="erp" rows={2} defaultValue={listValue(d.erp)} placeholder={"RxHere Partner API\nEventide fulfillment"} />
+          <textarea name="erp" rows={2} defaultValue={listValue(d.erp)} placeholder={"VitaRelay Practice API\nEventide fulfillment"} />
         </label>
       </section>
 

@@ -294,9 +294,11 @@ export async function signEscript(formData: FormData) {
       prescriberJson: JSON.stringify({
         displayName: signed.data.displayName,
         npi: signed.data.npi,
+        npiNumber: signed.data.npi,
         email: signed.data.signerEmail,
         licenseState: signed.data.licenseState,
         licenseNumber: signed.data.licenseNumber,
+        deaNumber: signed.data.deaNumber || "",
       }),
     },
   });
@@ -306,6 +308,13 @@ export async function signEscript(formData: FormData) {
   });
   if (eventide) {
     await prisma.order.update({ where: { id: order.id }, data: { pharmacyId: eventide.id } });
+  }
+
+  try {
+    const { syncPrescriberToVitaRelay } = await import("@/lib/eventide");
+    await syncPrescriberToVitaRelay(user.id);
+  } catch {
+    /* roster sync is best-effort; placement still carries DEA/NPI inline */
   }
 
   await openRxcoreOrder({

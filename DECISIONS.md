@@ -6,7 +6,7 @@ These are the working decisions for this build. Items marked pending still need 
 
 - This is a separate app from KIAN Privé. It lives in `wellness-tech` and does not use the KIAN clinic database.
 - The visual system is the teal Wellness Tech homepage (`#0E6E66`, Plus Jakarta Sans, dark `#0F2526` sections). The cream RxHere canvas is not mixed in, so the public site and the portal are one brand.
-- RxHere Partner API is the live pharmacy path when `RXHERE_API_TOKEN` is set (`RXHERE_API_BASE_URL`, webhooks at `/api/webhooks/rxhere`). Without the token, portal checkout still uses the local sandbox order ids. KIAN posts paid therapy orders to `/api/partner/orders`.
+- VitaRelay Practice API is the live pharmacy logistics path (`VITARELAY_API_KEY` / `EVENTIDE_API_KEY`, base `/api/public/practice/v1`, webhooks at `/api/webhooks/eventide`). Legacy `RXHERE_*` env aliases still work. Without a key, portal checkout uses local sandbox order ids. KIAN posts paid therapy orders to `/api/partner/orders` → WT `POST /prescriptions`.
 - Local data is SQLite for development. Production remains PostgreSQL on a HIPAA-eligible host with a BAA. That host is not chosen yet, so this copy is not a production launch.
 - Repository ownership in the spec is RxHere Holdings LLC. This copy is local until that GitHub organization is named. It is not part of the KIAN Privé repo.
 

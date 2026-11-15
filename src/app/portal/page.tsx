@@ -282,7 +282,11 @@ export default async function PortalHome() {
       <PageHeader
         kicker={tierLabel(user.org.verificationTier)}
         title={user.org.legalName}
-        lede="Patients, credentials, pharmacy fulfillment, and ordering — one practice workspace."
+        lede={
+          user.org.clinicCode
+            ? `${user.org.legalName} clinic portal — your patients, VitaRelay fulfillment, and formulary orders stay scoped to this practice.`
+            : "Patients, credentials, pharmacy fulfillment, and ordering — one practice workspace."
+        }
         actions={
           <div className="ws-head-actions">
             <Link className="btn btn-ghost" href="/portal/cart">

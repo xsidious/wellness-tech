@@ -3,7 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { canOrder, commissionCents, isProductClass, routeSource, shippingCents, type ProductClass } from "@/lib/rules";
 import { signWebhook, verifyWebhook } from "@/lib/crypto";
-import { placePrescriptionOrder, rxhereConfigured, type RxHerePatient, type RxHerePrescriber } from "@/lib/rxhere";
+import {
+  placePrescriptionOrder,
+  rxhereConfigured,
+  syncPrescriberToVitaRelay,
+  type RxHerePatient,
+  type RxHerePrescriber,
+} from "@/lib/rxhere";
 
 const STATUS: Record<string, string> = {
   "order.received": "received",
@@ -134,18 +140,107 @@ export async function emitOrderEvent(orderId: string, type: string, reason?: str
   return ingestWebhook(body, signWebhook(body));
 }
 
+function parsePatientJson(raw: string): RxHerePatient | null {
+  try {
+    const parsed = raw ? (JSON.parse(raw) as RxHerePatient) : null;
+    if (!parsed?.firstName || !parsed?.address?.line1) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function parsePrescriberJson(raw: string): RxHerePrescriber | undefined {
+  try {
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    if (!parsed) return undefined;
+    const npi = String(parsed.npiNumber || parsed.npi || "").replace(/\D/g, "") || undefined;
+    const out: RxHerePrescriber = {
+      npiNumber: npi,
+      firstName: String(parsed.firstName || "").trim() || undefined,
+      lastName: String(parsed.lastName || "").trim() || undefined,
+      title: String(parsed.title || "").trim() || undefined,
+      practiceName: String(parsed.practiceName || parsed.displayName || "").trim() || undefined,
+      phone: String(parsed.phone || "").trim() || undefined,
+      licenseState: String(parsed.licenseState || "").trim() || undefined,
+      licenseNumber: String(parsed.licenseNumber || "").trim() || undefined,
+      deaNumber: String(parsed.deaNumber || parsed.dea || "").trim() || undefined,
+    };
+    if (out.npiNumber || out.lastName || out.firstName || out.deaNumber) return out;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function buildPatientFromOrder(order: {
+  patientJson: string;
+  clinicalPatientId: string | null;
+  shipToJson: string;
+}): Promise<RxHerePatient | null> {
+  const fromJson = parsePatientJson(order.patientJson);
+  if (fromJson) return fromJson;
+  if (!order.clinicalPatientId) return null;
+  const patient = await prisma.clinicalPatient.findUnique({ where: { id: order.clinicalPatientId } });
+  if (!patient) return null;
+  let address = { line1: "", line2: "", city: "", state: "", zipCode: "", country: "US" };
+  try {
+    const addr = JSON.parse(patient.addressJson || "{}") as Record<string, string>;
+    address = {
+      line1: addr.line1 || addr.street1 || "",
+      line2: addr.line2 || addr.street2 || "",
+      city: addr.city || "",
+      state: addr.state || "",
+      zipCode: addr.zipCode || addr.zip || addr.postal_code || "",
+      country: addr.country || "US",
+    };
+  } catch {
+    /* keep empty */
+  }
+  if (!address.line1) {
+    try {
+      const ship = JSON.parse(order.shipToJson || "{}") as Record<string, string>;
+      address = {
+        line1: ship.street1 || ship.line1 || "",
+        line2: ship.street2 || ship.line2 || "",
+        city: ship.city || "",
+        state: ship.state || "",
+        zipCode: ship.zip || ship.postal_code || "",
+        country: ship.country || "US",
+      };
+    } catch {
+      /* keep empty */
+    }
+  }
+  const parts = patient.fullName.trim().split(/\s+/);
+  return {
+    firstName: parts[0] || "Patient",
+    lastName: parts.slice(1).join(" ") || "Unknown",
+    dateOfBirth: patient.dateOfBirth || "1990-01-01",
+    gender: patient.gender || undefined,
+    phone: patient.phone || undefined,
+    email: patient.email || undefined,
+    allergies: patient.allergies || undefined,
+    address,
+  };
+}
+
 export async function openRxcoreOrder(input: {
   orderId: string;
   lines: { productClass: ProductClass; patientInitials: string }[];
-  /** When set, 503A lines are submitted to Eventide (VitaRelay Practice API). */
+  /** Optional; when omitted, patient/prescriber are rebuilt from the order for VitaRelay. */
   prescription?: {
     patient: RxHerePatient;
     prescriber?: RxHerePrescriber;
     shippingMethod?: "2_DAY" | "OVERNIGHT";
+    shippingDestinationType?: "patient_direct" | "practice_office" | "distributor_office";
     platformProductIdBySku?: Record<string, string>;
   };
 }) {
-  const order = await prisma.order.findUnique({ where: { id: input.orderId }, include: { lines: true } });
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    include: { lines: true, placedBy: { include: { credential: true } } },
+  });
   if (!order) throw new Error("Order not found.");
 
   for (const line of input.lines) {
@@ -155,44 +250,135 @@ export async function openRxcoreOrder(input: {
     });
   }
 
-  const rxLines = order.lines.filter((line) => line.productClass === "503A");
-  if (rxhereConfigured() && input.prescription && rxLines.length) {
-    const placed = await placePrescriptionOrder({
-      partnerOrderId: order.partnerExternalRef || order.invoiceNumber,
-      shippingMethod: input.prescription.shippingMethod || (order.shippingMethod as "2_DAY" | "OVERNIGHT") || "2_DAY",
-      items: rxLines.map((line) => ({
-        sku: line.sku,
-        platformProductId: input.prescription?.platformProductIdBySku?.[line.sku],
-        name: line.name,
-        strength: line.strength || undefined,
-        size: line.size || undefined,
-        dosageForm: line.dosageForm || undefined,
-        quantity: line.qty,
-        sig: line.sig || "As directed by prescribing clinician.",
-      })),
-      patient: input.prescription.patient,
-      prescriber: input.prescription.prescriber,
-    });
-    if (!placed.ok) {
+  const rxLines = order.lines.filter((line) => line.productClass === "503A" || line.productClass === "503B");
+  if (rxhereConfigured() && rxLines.length) {
+    let prescription = input.prescription;
+    if (!prescription?.patient) {
+      const patient = await buildPatientFromOrder(order);
+      if (patient) {
+        prescription = {
+          patient,
+          prescriber: parsePrescriberJson(order.prescriberJson),
+          shippingMethod: (order.shippingMethod as "2_DAY" | "OVERNIGHT") || "2_DAY",
+        };
+      }
+    }
+
+    if (prescription?.patient) {
+      const shipDest =
+        prescription.shippingDestinationType ||
+        (order.shipDestination === "PRACTICE" || /office|practice/i.test(order.shipDestination || "")
+          ? "practice_office"
+          : "patient_direct");
+
+      let deaFromCredential = "";
+      try {
+        const { decryptField } = await import("@/lib/crypto");
+        const cipher = order.placedBy?.credential?.deaCipher || "";
+        if (cipher) {
+          deaFromCredential = cipher.includes(":") ? decryptField(cipher) || "" : cipher;
+        }
+      } catch {
+        deaFromCredential = "";
+      }
+
+      const cred = order.placedBy?.credential;
+      let licenses: Array<{ state: string; licenseNumber: string }> = [];
+      try {
+        licenses = JSON.parse(cred?.licensesJson || "[]") as Array<{ state: string; licenseNumber: string }>;
+      } catch {
+        licenses = [];
+      }
+
+      const prescriber: RxHerePrescriber = {
+        ...prescription.prescriber,
+        npiNumber:
+          prescription.prescriber?.npiNumber ||
+          cred?.npi ||
+          process.env.EVENTIDE_PRESCRIBER_NPI ||
+          undefined,
+        practiceName: prescription.prescriber?.practiceName || cred?.displayName || order.placedBy?.name,
+        licenseState:
+          prescription.prescriber?.licenseState ||
+          licenses[0]?.state ||
+          process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE ||
+          prescription.patient.address.state,
+        licenseNumber:
+          prescription.prescriber?.licenseNumber ||
+          licenses[0]?.licenseNumber ||
+          process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER ||
+          undefined,
+        deaNumber: prescription.prescriber?.deaNumber || deaFromCredential || undefined,
+      };
+
+      if (order.placedById && cred?.npi) {
+        await syncPrescriberToVitaRelay(order.placedById).catch(() => null);
+      }
+
+      const products = await prisma.product.findMany({
+        where: { sku: { in: rxLines.map((line) => line.sku) } },
+        select: { sku: true, rxcoreFormularyId: true },
+      });
+      const formularyBySku = new Map(products.map((p) => [p.sku, p.rxcoreFormularyId]));
+
+      const placed = await placePrescriptionOrder({
+        partnerOrderId: order.partnerExternalRef || order.invoiceNumber,
+        shippingMethod: prescription.shippingMethod || (order.shippingMethod as "2_DAY" | "OVERNIGHT") || "2_DAY",
+        shippingDestinationType: shipDest,
+        items: rxLines.map((line) => {
+          const fromMap = prescription?.platformProductIdBySku?.[line.sku];
+          const formulary = formularyBySku.get(line.sku);
+          const platformProductId =
+            fromMap ||
+            (/^[0-9a-f-]{36}$/i.test(line.sku) ? line.sku : "") ||
+            (formulary && /^[0-9a-f-]{36}$/i.test(formulary) ? formulary : "") ||
+            undefined;
+          return {
+            sku: line.sku,
+            platformProductId,
+            name: line.name,
+            strength: line.strength || undefined,
+            size: line.size || undefined,
+            dosageForm: line.dosageForm || undefined,
+            quantity: line.qty,
+            sig: line.sig || "As directed by prescribing clinician.",
+          };
+        }),
+        patient: prescription.patient,
+        prescriber,
+      });
+      if (!placed.ok) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: "on_hold", splitMessage: placed.error, placementError: placed.error },
+        });
+        throw new Error(placed.error);
+      }
       await prisma.order.update({
         where: { id: order.id },
-        data: { status: "on_hold", splitMessage: placed.error },
+        data: {
+          rxcoreOrderId: placed.orderId,
+          rxhereOrderId: placed.orderId,
+          rxhereBatchId: placed.batchId || "",
+          status: "submitted",
+          splitMessage: "",
+          placementError: "",
+        },
       });
-      throw new Error(placed.error);
+      await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
+      await emitOrderEvent(order.id, "order.received");
+      return placed.orderId;
     }
+
     await prisma.order.update({
       where: { id: order.id },
       data: {
-        rxcoreOrderId: placed.orderId,
-        rxhereOrderId: placed.orderId,
-        rxhereBatchId: placed.batchId || "",
-        status: "submitted",
-        splitMessage: "",
+        status: "on_hold",
+        placementError: "Missing patient details required to place with VitaRelay.",
+        splitMessage: "Missing patient details required to place with VitaRelay.",
       },
     });
-    await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
-    await emitOrderEvent(order.id, "order.received");
-    return placed.orderId;
+    throw new Error("Missing patient details required to place with VitaRelay.");
   }
 
   const rxcoreOrderId = `RXC-${randomBytes(4).toString("hex").toUpperCase()}`;
@@ -202,10 +388,7 @@ export async function openRxcoreOrder(input: {
   return rxcoreOrderId;
 }
 
-/**
- * Re-submit an on-hold / missing-RxHere order to the Partner logistics API.
- * Used when RxHere was temporarily unavailable (e.g. Cloudflare 502) after KIAN already created the WT order.
- */
+/** Re-submit an on-hold / missing-VitaRelay order to the Practice API. */
 export async function retryRxHereSubmission(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) return { ok: false as const, error: "Order not found." };
@@ -213,27 +396,16 @@ export async function retryRxHereSubmission(orderId: string) {
     return { ok: true as const, orderId: order.rxhereOrderId, duplicate: true as const };
   }
   if (!rxhereConfigured()) {
-    return { ok: false as const, error: "EVENTIDE_API_KEY / RXHERE_API_TOKEN is not configured." };
+    return { ok: false as const, error: "VITARELAY_API_KEY / EVENTIDE_API_KEY is not configured." };
   }
 
-  let patient: RxHerePatient | null = null;
-  try {
-    patient = order.patientJson ? (JSON.parse(order.patientJson) as RxHerePatient) : null;
-  } catch {
-    patient = null;
-  }
+  let patient = parsePatientJson(order.patientJson);
+  if (!patient) patient = await buildPatientFromOrder(order);
   if (!patient?.firstName || !patient?.address?.line1) {
-    return { ok: false as const, error: "Order is missing patient details needed for RxHere." };
+    return { ok: false as const, error: "Order is missing patient details needed for VitaRelay." };
   }
 
-  let prescriber: RxHerePrescriber | undefined;
-  try {
-    const parsed = order.prescriberJson ? (JSON.parse(order.prescriberJson) as RxHerePrescriber) : undefined;
-    if (parsed && (parsed.npiNumber || parsed.lastName || parsed.firstName)) prescriber = parsed;
-  } catch {
-    prescriber = undefined;
-  }
-
+  const prescriber = parsePrescriberJson(order.prescriberJson);
   const products = await prisma.product.findMany({
     where: { sku: { in: order.lines.map((line) => line.sku) } },
     select: { sku: true, rxcoreFormularyId: true },
@@ -273,11 +445,15 @@ export async function retryRxHereSubmission(orderId: string) {
     });
     await prisma.order.update({
       where: { id: order.id },
-      data: { splitMessage: "", status: "submitted" },
+      data: { splitMessage: "", placementError: "", status: "submitted" },
     });
     return { ok: true as const, orderId: rxhereOrderId, duplicate: false as const };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "RxHere resubmit failed.";
+    const message = error instanceof Error ? error.message : "VitaRelay resubmit failed.";
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { placementError: message, splitMessage: message },
+    });
     return { ok: false as const, error: message };
   }
 }

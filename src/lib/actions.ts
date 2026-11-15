@@ -276,6 +276,7 @@ export async function completeSignup(formData: FormData) {
     const password = String(formData.get("password") || "");
     const pin = String(formData.get("pin") || "").trim();
     const ref = String(formData.get("ref") || "").trim().toUpperCase();
+    const clinic = String(formData.get("clinic") || "").trim();
     const turnstile = String(formData.get("cf-turnstile-response") || "");
     if (name.length < 2 || legalName.length < 2) return { error: "Name and organization are required." };
     const strong = assertStrongPassword(password);
@@ -309,17 +310,28 @@ export async function completeSignup(formData: FormData) {
         : accountType === "telehealth"
           ? ["owner", "api_client"]
           : ["owner", "prescriber"];
-    const slugBase = legalName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "org";
-    const org = await prisma.organization.create({
-      data: {
-        type: accountType,
-        legalName,
-        slug: `${slugBase}-${randomInt(1000, 9999)}`,
-        verificationTier: 0,
-        referringAffiliateId,
-        assignedRep: "Alex Morgan",
-      },
-    });
+
+    // Join an existing partner clinic org when signup includes ?clinic=code
+    let orgId = "";
+    if (clinic && accountType === "practice") {
+      const { findOrgByClinicCode } = await import("@/lib/clinic-accounts");
+      const clinicOrg = await findOrgByClinicCode(clinic);
+      if (!clinicOrg) return { error: "That clinic code was not found. Ask Wellness Tech for your invite link." };
+      orgId = clinicOrg.id;
+    } else {
+      const slugBase = legalName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "org";
+      const org = await prisma.organization.create({
+        data: {
+          type: accountType,
+          legalName,
+          slug: `${slugBase}-${randomInt(1000, 9999)}`,
+          verificationTier: 0,
+          referringAffiliateId,
+          assignedRep: "Alex Morgan",
+        },
+      });
+      orgId = org.id;
+    }
     const user = await prisma.user.create({
       data: {
         email,
@@ -329,7 +341,7 @@ export async function completeSignup(formData: FormData) {
         mfaHash: await bcrypt.hash(pin, 10),
         mfaEnabled: true,
         lastLoginAt: new Date(),
-        org: { connect: { id: org.id } },
+        org: { connect: { id: orgId } },
       },
     });
     if (accountType === "affiliate") {
@@ -350,7 +362,12 @@ export async function completeSignup(formData: FormData) {
         },
       });
     }
-    await audit({ actorId: user.id, action: "auth.signup", object: org.id, after: accountType });
+    await audit({
+      actorId: user.id,
+      action: "auth.signup",
+      object: orgId,
+      after: clinic ? `${accountType}:clinic=${clinic}` : accountType,
+    });
     await setLogin(user.id);
     if (roles.includes("prescriber")) redirect("/signup/npi");
     redirect("/portal");
@@ -811,6 +828,37 @@ export async function syncRxHereFormularyAction() {
   redirect(`/admin/products?synced=${result.upserted}&source=${result.source}`);
 }
 
+/** Push all credentialed WT prescribers onto the VitaRelay practice roster. */
+export async function syncVitaRelayPrescribersAction() {
+  const userId = await readUserId();
+  if (!userId) redirect("/login");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !rolesOf(user.roles).includes("admin")) redirect("/login");
+  const { syncPrescriberToVitaRelay, listPrescribers } = await import("@/lib/eventide");
+  const credentials = await prisma.prescriberCredential.findMany({
+    where: { npi: { not: "" } },
+    select: { userId: true },
+  });
+  let ok = 0;
+  let failed = 0;
+  for (const cred of credentials) {
+    const result = await syncPrescriberToVitaRelay(cred.userId);
+    if (result.ok) ok += 1;
+    else failed += 1;
+  }
+  const remote = await listPrescribers();
+  const remoteCount = Array.isArray((remote.data as { data?: unknown[] })?.data)
+    ? ((remote.data as { data: unknown[] }).data.length)
+    : 0;
+  await audit({
+    actorId: user.id,
+    action: "vitarelay.prescriber_roster_sync",
+    object: "prescribers",
+    after: `local_ok=${ok};local_fail=${failed};remote=${remoteCount}`,
+  });
+  redirect(`/admin/prescribers?synced=${ok}&failed=${failed}&remote=${remoteCount}`);
+}
+
 export async function saveProduct(formData: FormData) {
   const userId = await readUserId();
   if (!userId) redirect("/login");
@@ -945,4 +993,82 @@ export async function adminAdvanceOrder(formData: FormData) {
   await prisma.order.update({ where: { id: order.id }, data: { status: next } });
   await audit({ actorId: user.id, action: "admin.order_advanced", object: order.id, after: next });
   redirect(`/admin/orders/${orderId}`);
+}
+
+export async function refreshEventideOrderAction(formData: FormData) {
+  const userId = await readUserId();
+  if (!userId) redirect("/login");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) redirect("/login");
+  const orderId = String(formData.get("orderId") || "");
+  const isAdmin = rolesOf(user.roles).includes("admin");
+  const order = await prisma.order.findFirst({
+    where: isAdmin ? { id: orderId } : { id: orderId, orgId: user.orgId },
+  });
+  if (!order) redirect(isAdmin ? "/admin/orders" : "/portal/orders");
+  const { refreshOrderFromEventide } = await import("@/lib/eventide");
+  const result = await refreshOrderFromEventide(order.id);
+  const base = isAdmin ? `/admin/orders/${order.id}` : `/portal/orders/${order.id}`;
+  if (!result.ok) redirect(`${base}?error=${encodeURIComponent(result.error)}`);
+  redirect(`${base}?refreshed=1`);
+}
+
+export async function cancelEventideOrderAction(formData: FormData) {
+  const userId = await readUserId();
+  if (!userId) redirect("/login");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) redirect("/login");
+  const orderId = String(formData.get("orderId") || "");
+  const isAdmin = rolesOf(user.roles).includes("admin");
+  const order = await prisma.order.findFirst({
+    where: isAdmin ? { id: orderId } : { id: orderId, orgId: user.orgId },
+  });
+  const base = isAdmin ? `/admin/orders/${orderId}` : `/portal/orders/${orderId}`;
+  if (!order) redirect(isAdmin ? "/admin/orders" : "/portal/orders");
+  if (["shipped", "delivered", "cancelled"].includes(order.status)) {
+    redirect(`${base}?error=${encodeURIComponent("This order can no longer be cancelled.")}`);
+  }
+  const remoteId = order.rxhereOrderId || order.rxcoreOrderId;
+  if (!remoteId) redirect(`${base}?error=${encodeURIComponent("No VitaRelay order id to cancel.")}`);
+  const { cancelOrder, notifyKianStatus } = await import("@/lib/eventide");
+  const result = await cancelOrder(remoteId);
+  if (!result.ok) {
+    const msg =
+      typeof result.data === "object" && result.data && "error" in result.data
+        ? String((result.data as { error?: { message?: string } | string }).error)
+        : `Cancel failed (${result.status}).`;
+    redirect(`${base}?error=${encodeURIComponent(msg)}`);
+  }
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { status: "cancelled", placementError: "" },
+  });
+  await prisma.orderLine.updateMany({ where: { orderId: order.id }, data: { lineStatus: "cancelled" } });
+  await audit({ actorId: user.id, action: "eventide.order_cancelled", object: order.id, after: remoteId });
+  await notifyKianStatus({
+    externalRef: order.partnerExternalRef || order.invoiceNumber,
+    status: "cancelled",
+    event: "order.cancelled",
+    rxhereOrderId: remoteId,
+    partnerSite: order.source || undefined,
+  });
+  redirect(`${base}?cancelled=1`);
+}
+
+export async function retryEventideOrderAction(formData: FormData) {
+  const userId = await readUserId();
+  if (!userId) redirect("/login");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) redirect("/login");
+  const orderId = String(formData.get("orderId") || "");
+  const isAdmin = rolesOf(user.roles).includes("admin");
+  const order = await prisma.order.findFirst({
+    where: isAdmin ? { id: orderId } : { id: orderId, orgId: user.orgId },
+  });
+  const base = isAdmin ? `/admin/orders/${orderId}` : `/portal/orders/${orderId}`;
+  if (!order) redirect(isAdmin ? "/admin/orders" : "/portal/orders");
+  const { retryRxHereSubmission } = await import("@/lib/rxcore");
+  const result = await retryRxHereSubmission(order.id);
+  if (!result.ok) redirect(`${base}?error=${encodeURIComponent(result.error)}`);
+  redirect(`${base}?retried=1`);
 }

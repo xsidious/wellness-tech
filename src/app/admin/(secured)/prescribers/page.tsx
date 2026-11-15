@@ -6,10 +6,16 @@ import {
   StatusBadge,
   statusTone,
 } from "@/components/portal/Workspace";
+import { syncVitaRelayPrescribersAction } from "@/lib/actions";
 import { rolesOf } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 
-export default async function AdminPrescribersPage() {
+export default async function AdminPrescribersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ synced?: string; failed?: string; remote?: string }>;
+}) {
+  const q = await searchParams;
   const owners = await prisma.user.findMany({
     where: {
       OR: [{ roles: { contains: "prescriber" } }, { roles: { contains: "owner" } }, { credential: { isNot: null } }],
@@ -33,8 +39,20 @@ export default async function AdminPrescribersPage() {
       <PageHeader
         kicker="Clinical network"
         title="Prescribers"
-        lede="Clinicians across the network — open a profile to see which patients they brought and every prescription attributed to them."
+        lede="Clinicians across the network — open a profile to see which patients they brought and every prescription attributed to them. Sync pushes NPI/DEA/license onto the VitaRelay practice roster."
+        actions={
+          <form action={syncVitaRelayPrescribersAction}>
+            <button className="btn btn-accent" type="submit">
+              Sync VitaRelay roster
+            </button>
+          </form>
+        }
       />
+      {q.synced != null ? (
+        <p className="note">
+          Roster sync · {q.synced} ok · {q.failed || 0} failed · {q.remote || 0} on VitaRelay.
+        </p>
+      ) : null}
 
       <SectionCard title={`${owners.length} clinicians`} description="Accounts with owner/prescriber roles or an NPI credential." flush>
         {owners.length ? (

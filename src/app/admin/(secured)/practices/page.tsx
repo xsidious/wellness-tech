@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminClinicAccountsForm } from "@/components/AdminClinicAccountsForm";
 import { AdminProvisionForm } from "@/components/AdminProvisionForm";
 import {
   EmptyState,
@@ -26,6 +27,13 @@ export default async function AdminPracticesPage() {
         title="Practices"
         lede="Onboarding, verification tier, locations, and assigned rep — unlock catalog depth as credentials clear."
       />
+
+      <SectionCard
+        title="Partner clinic portal accounts"
+        description="One branded dashboard per clinic org. Provision owners, then share /signup?clinic=code for additional staff."
+      >
+        <AdminClinicAccountsForm />
+      </SectionCard>
 
       <SectionCard
         title="Create practitioner account"
@@ -60,6 +68,11 @@ export default async function AdminPracticesPage() {
                         <b>{org.legalName}</b>
                       </Link>
                       <div className="muted">{org.slug}</div>
+                      {org.clinicCode ? (
+                        <div className="muted">
+                          Clinic code <code>{org.clinicCode}</code>
+                        </div>
+                      ) : null}
                       {org.referringAffiliateId ? <div className="muted">Affiliate attributed</div> : null}
                     </td>
                     <td>{org.type}</td>

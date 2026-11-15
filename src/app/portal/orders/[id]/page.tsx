@@ -4,7 +4,12 @@ import { ClinicalChartView } from "@/components/ClinicalChartView";
 import { EscriptDocument } from "@/components/escript/EscriptDocument";
 import { EscriptSigningPanel } from "@/components/escript/EscriptSigningPanel";
 import { PageHeader, SectionCard, StatusBadge, statusTone } from "@/components/portal/Workspace";
-import { advanceOrder } from "@/lib/actions";
+import {
+  advanceOrder,
+  cancelEventideOrderAction,
+  refreshEventideOrderAction,
+  retryEventideOrderAction,
+} from "@/lib/actions";
 import { assertCanSignEscript, buildLinesSnapshot, buildPatientSnapshot } from "@/lib/escript";
 import { requireUser } from "@/lib/guard";
 import { signEscript } from "@/lib/practice-actions";
@@ -18,7 +23,7 @@ export default async function OrderDetail({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; refill?: string }>;
+  searchParams: Promise<{ error?: string; refill?: string; refreshed?: string; cancelled?: string; retried?: string }>;
 }) {
   const user = await requireUser();
   const q = await searchParams;
@@ -66,8 +71,14 @@ export default async function OrderDetail({
       />
 
       {q.error ? <p className="error">{q.error}</p> : null}
+      {q.refreshed ? <p className="note">Refreshed status from VitaRelay.</p> : null}
+      {q.cancelled ? <p className="note">Cancellation requested with VitaRelay.</p> : null}
+      {q.retried ? <p className="note">Resubmitted to VitaRelay.</p> : null}
       {q.refill === "sign" ? (
         <p className="note">Refill approved — sign the eScript below to release this order to pharmacy.</p>
+      ) : null}
+      {order.placementError || order.splitMessage ? (
+        <p className="error">{order.placementError || order.splitMessage}</p>
       ) : null}
 
       <div className="ws-stat-grid">
@@ -78,22 +89,23 @@ export default async function OrderDetail({
           </strong>
         </div>
         <div className="ws-stat">
-          <span className="ws-stat-label">Pharmacy</span>
+          <span className="ws-stat-label">VitaRelay</span>
           <strong className="ws-stat-value" style={{ fontSize: "1.05rem" }}>
-            {order.pharmacy?.name || "Unassigned"}
+            {order.rxhereOrderId || order.pharmacy?.name || "Unassigned"}
           </strong>
         </div>
         <div className="ws-stat">
           <span className="ws-stat-label">Tracking</span>
           <strong className="ws-stat-value" style={{ fontSize: "1.05rem" }}>
             {order.trackingNumber ? (
-              trackingHref(order.trackingNumber) ? (
+              trackingHref(order.trackingNumber, order.trackingUrl) ? (
                 <a
-                  href={trackingHref(order.trackingNumber)!}
+                  href={trackingHref(order.trackingNumber, order.trackingUrl)!}
                   target="_blank"
                   rel="noreferrer"
                   className="ws-text-link"
                 >
+                  {order.trackingCarrier ? `${order.trackingCarrier} · ` : ""}
                   {order.trackingNumber}
                 </a>
               ) : (
@@ -104,6 +116,39 @@ export default async function OrderDetail({
             )}
           </strong>
         </div>
+        <div className="ws-stat">
+          <span className="ws-stat-label">Last webhook</span>
+          <strong className="ws-stat-value" style={{ fontSize: "0.95rem" }}>
+            {order.lastWebhookAt ? order.lastWebhookAt.toLocaleString() : "—"}
+          </strong>
+        </div>
+      </div>
+
+      <div className="ws-head-actions" style={{ flexWrap: "wrap", gap: 8 }}>
+        {(order.rxhereOrderId || order.rxcoreOrderId) && !["shipped", "delivered", "cancelled"].includes(order.status) ? (
+          <form action={cancelEventideOrderAction}>
+            <input type="hidden" name="orderId" value={order.id} />
+            <button className="btn btn-ghost" type="submit">
+              Cancel before ship
+            </button>
+          </form>
+        ) : null}
+        {order.rxhereOrderId || order.rxcoreOrderId ? (
+          <form action={refreshEventideOrderAction}>
+            <input type="hidden" name="orderId" value={order.id} />
+            <button className="btn btn-ghost" type="submit">
+              Refresh from VitaRelay
+            </button>
+          </form>
+        ) : null}
+        {!order.rxhereOrderId && (order.placementError || order.status === "on_hold") ? (
+          <form action={retryEventideOrderAction}>
+            <input type="hidden" name="orderId" value={order.id} />
+            <button className="btn btn-accent" type="submit">
+              Retry placement
+            </button>
+          </form>
+        ) : null}
       </div>
 
       <div className="timeline">
