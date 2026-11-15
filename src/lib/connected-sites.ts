@@ -33,8 +33,22 @@ export type SiteRemoteMetrics = {
   bookings30d?: number;
   submissionsOpen?: number;
   submissionsTotal?: number;
+  therapySubsActive?: number;
+  therapySubsPastDue?: number;
+  membershipSubsActive?: number;
+  retailProducts?: number;
+  clinicalProducts?: number;
+  distributionPending?: number;
+  distributionErrors?: number;
+  processor?: string;
+  hub?: string;
   site?: string;
   environment?: string;
+  processingQueue?: {
+    openIntakes?: Array<Record<string, unknown>>;
+    openProposals?: Array<Record<string, unknown>>;
+    recentOrders?: Array<Record<string, unknown>>;
+  };
 };
 
 type SeedSite = {

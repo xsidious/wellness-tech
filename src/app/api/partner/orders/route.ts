@@ -268,11 +268,19 @@ export async function POST(request: Request) {
   };
   const invoicePrefix = invoicePrefixBySite[partnerSite] || `WT-${partnerSite.slice(0, 6).toUpperCase()}`;
 
+  // VitaRelay/Eventide owns nearest-pharmacy routing for Practice API orders.
+  // Attach the Eventide network Pharmacy row so WT pharmacy desk + admin can oversee.
+  const { ensurePharmacyNetwork } = await import("@/lib/ensure-pharmacies");
+  const pharmacies = await ensurePharmacyNetwork();
+  const eventidePharmacy =
+    pharmacies.find((p) => /eventide|vitarelay|rx\s*here/i.test(p.name)) || pharmacies[0] || null;
+
   const order = await prisma.order.create({
     data: {
       orgId: org.id,
       placedById: user.id,
       clinicalPatientId: clinicalPatient.id,
+      pharmacyId: eventidePharmacy?.id || undefined,
       invoiceNumber: `${invoicePrefix}-${String(count + 1).padStart(5, "0")}`,
       status: "submitted",
       paymentStatus: "paid_external",

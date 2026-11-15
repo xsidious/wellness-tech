@@ -233,6 +233,7 @@ export async function refreshConnectedSiteAction(formData: FormData) {
   await refreshConnectedSite(id);
   await audit({ actorId: user.id, action: "connected_site.refresh", object: `site:${id}` });
   revalidatePath("/admin/sites");
+  revalidatePath("/admin/hub");
   revalidatePath(`/admin/sites/${id}`);
   redirect(`/admin/sites/${id}?refreshed=1`);
 }
@@ -248,8 +249,9 @@ export async function refreshAllConnectedSitesAction() {
   }
   await audit({ actorId: user.id, action: "connected_site.refresh_all", object: `sites:${sites.length}` });
   revalidatePath("/admin/sites");
+  revalidatePath("/admin/hub");
   revalidatePath("/admin");
-  redirect("/admin/sites?refreshed=1");
+  redirect("/admin/hub?refreshed=1");
 }
 
 type AdminOrderLineInput = {

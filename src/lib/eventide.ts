@@ -701,27 +701,60 @@ export async function notifyKianStatus(payload: {
   /** Originating clinic site key (kian-prive, facial-design, …). */
   partnerSite?: string;
 }) {
-  const url = process.env.KIAN_STATUS_WEBHOOK_URL?.trim();
+  if (!payload.externalRef) return;
   const secret = process.env.KIAN_PARTNER_SECRET?.trim() || process.env.WT_PARTNER_ORDER_SECRET?.trim();
-  if (!url || !secret || !payload.externalRef) return;
-  let ok = false;
+  if (!secret) return;
+
+  const siteKey = payload.partnerSite || "kian-prive";
+  const urls = new Set<string>();
+  const primary = process.env.KIAN_STATUS_WEBHOOK_URL?.trim();
+  if (primary) urls.add(primary);
+
+  // Fan-out to the ConnectedSite status webhook for the originating clinic (and KIAN processor).
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-wt-partner-secret": secret,
-      },
-      body: JSON.stringify(payload),
-      cache: "no-store",
-    });
-    ok = res.ok;
+    const { ensureConnectedSites } = await import("@/lib/connected-sites");
+    const sites = await ensureConnectedSites();
+    for (const site of sites) {
+      if (!site.baseUrl || !site.statusWebhookPath) continue;
+      const matchesOrigin =
+        site.sourceKey === siteKey ||
+        site.slug === siteKey ||
+        site.slug === "kian-prive"; // KIAN always processes; always notify primary processor
+      if (!matchesOrigin) continue;
+      const base = site.baseUrl.replace(/\/$/, "");
+      const path = site.statusWebhookPath.startsWith("/")
+        ? site.statusWebhookPath
+        : `/${site.statusWebhookPath}`;
+      // Partner clinics use /api/kian/webhook on their own apps; KIAN uses wellness-tech-order.
+      if (site.slug === "kian-prive" || path.includes("wellness-tech-order")) {
+        urls.add(`${base}${path}`);
+      }
+    }
   } catch {
-    ok = false;
+    // ConnectedSite lookup is best-effort.
   }
+
+  let ok = false;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wt-partner-secret": secret,
+        },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      });
+      if (res.ok) ok = true;
+    } catch {
+      // continue other URLs
+    }
+  }
+
   try {
     const { touchConnectedSiteWebhook } = await import("@/lib/connected-sites");
-    await touchConnectedSiteWebhook(payload.partnerSite || "kian-prive", ok);
+    await touchConnectedSiteWebhook(siteKey, ok);
   } catch {
     // Monitoring updates are best-effort.
   }
