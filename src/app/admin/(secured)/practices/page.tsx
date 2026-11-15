@@ -29,7 +29,7 @@ export default async function AdminPracticesPage() {
       />
 
       <SectionCard
-        title="Partner clinic portal accounts"
+        title="Partner portal accounts"
         description="One branded dashboard per clinic org. Provision owners, then share /signup?clinic=code for additional staff."
       >
         <AdminClinicAccountsForm />

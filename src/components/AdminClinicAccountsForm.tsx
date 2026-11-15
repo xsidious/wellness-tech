@@ -23,13 +23,16 @@ export function AdminClinicAccountsForm() {
   return (
     <div className="ws-stack" style={{ gap: "1rem" }}>
       <p className="muted" style={{ margin: 0 }}>
-        Links human owners to each partner clinic org (KIAN, Facial Design, 4everglow, Threefold, Hope &amp; Haven).
-        Invite teammates later with <code>/signup?clinic=&lt;code&gt;</code>.
+        Links human owners to each partner org (KIAN, Facial Design, 4everglow, Threefold, Hope &amp; Haven).
+        Hope &amp; Haven is a <b>referral partner</b> (not a clinic). Threefold &amp; Facial Design go through KIAN
+        first; 4everglow has its own doctor and uses telehealth out of state. Invite teammates with{" "}
+        <code>/signup?clinic=&lt;code&gt;</code>.
       </p>
       <ul className="ws-steps">
         {CLINIC_OWNER_SEEDS.map((seed) => (
           <li key={seed.site}>
-            <b>{seed.name}</b> — <code>{seed.email}</code> · clinic code <code>{seed.clinicCode}</code>
+            <b>{seed.name}</b> — <code>{seed.email}</code> · portal code <code>{seed.clinicCode}</code>
+            {seed.site === "hope-and-haven" ? " · referral (not a clinic)" : ""}
           </li>
         ))}
       </ul>
@@ -39,7 +42,7 @@ export function AdminClinicAccountsForm() {
           <span>Rotate passwords / PINs for existing owners</span>
         </label>
         <button className="btn btn-accent" type="submit" disabled={pending}>
-          {pending ? "Provisioning…" : "Provision clinic portal accounts"}
+          {pending ? "Provisioning…" : "Provision partner portal accounts"}
         </button>
       </form>
       {state && "error" in state && state.error ? (

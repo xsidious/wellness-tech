@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureAllPartnerClinicOrgs, ensurePartnerOrgForSite, normalizePartnerSite } from "@/lib/partner-org";
+import { partnerRoutingFor } from "@/lib/partner-routing";
 
 function parseJson<T>(raw: string, fallback: T): T {
   try {
@@ -49,6 +50,15 @@ export type SiteRemoteMetrics = {
     openProposals?: Array<Record<string, unknown>>;
     recentOrders?: Array<Record<string, unknown>>;
   };
+  capabilities?: {
+    telemedicine?: boolean;
+    telemedicineNote?: string;
+    bloodwork?: boolean;
+    bloodworkNote?: string;
+    therapyProposals?: boolean;
+    paymentProcessing?: boolean;
+    pharmacyFulfillment?: string;
+  };
 };
 
 type SeedSite = {
@@ -68,62 +78,62 @@ const DEFAULT_SITES: SeedSite[] = [
   {
     slug: "kian-prive",
     displayName: "KIAN Privé",
-    kind: "storefront",
+    kind: "processor",
     baseUrl: process.env.KIAN_APP_URL?.trim() || "https://www.kianprive.com",
     sourceKey: "kian-prive",
     statusWebhookPath: "/api/webhooks/wellness-tech-order",
     overviewPath: "/api/webhooks/wellness-tech-overview",
     healthPath: "/",
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
-    notes: "Consumer therapeutics storefront. Forwards paid Rx orders into WT; receives fulfillment status webhooks.",
+    notes: partnerRoutingFor("kian-prive").routingNote,
   },
   {
     slug: "threefold-strength",
     displayName: "Threefold Strength",
-    kind: "clinical",
+    kind: "clinic_via_kian",
     baseUrl: process.env.THREEFOLD_APP_URL?.trim() || "https://threefoldstrength.com",
     sourceKey: "threefold-strength",
     statusWebhookPath: "/api/kian/webhook",
     overviewPath: "/api/webhooks/wellness-tech-overview",
     healthPath: "/",
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
-    notes: "Partner clinic. Intakes → KIAN Privé; catalog/orders → Wellness Tech.",
+    notes: partnerRoutingFor("threefold-strength").routingNote,
   },
   {
     slug: "4everglow",
     displayName: "4everglow Wellness",
-    kind: "clinical",
+    kind: "clinic_own_md_telehealth",
     baseUrl: process.env.FOREVERGLOW_APP_URL?.trim() || "https://4everglow.vercel.app",
     sourceKey: "4everglow",
     statusWebhookPath: "/api/kian/webhook",
     overviewPath: "/api/webhooks/wellness-tech-overview",
     healthPath: "/",
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
-    notes: "Partner aesthetics/wellness clinic. Intakes → KIAN Privé; orders → Wellness Tech.",
+    notes: partnerRoutingFor("4everglow").routingNote,
   },
   {
     slug: "facial-design",
     displayName: "Facial Design Studio",
-    kind: "clinical",
+    kind: "clinic_via_kian",
     baseUrl: process.env.FACIAL_DESIGN_APP_URL?.trim() || "https://facialdesignstudio.com",
     sourceKey: "facial-design",
     statusWebhookPath: "/api/kian/webhook",
     overviewPath: "/api/webhooks/wellness-tech-overview",
     healthPath: "/",
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
-    notes: "Partner facial aesthetics clinic. Intakes → KIAN Privé; orders → Wellness Tech.",
+    notes: partnerRoutingFor("facial-design").routingNote,
   },
   {
     slug: "hope-and-haven",
     displayName: "Hope & Haven International",
-    kind: "clinical",
+    kind: "referral_partner",
     baseUrl: process.env.HOPE_AND_HAVEN_APP_URL?.trim() || "https://hope-and-haven.vercel.app",
     sourceKey: "hope-and-haven",
     statusWebhookPath: "/api/kian/webhook",
     overviewPath: "/api/webhooks/wellness-tech-overview",
     healthPath: "/",
     secretEnvKey: "WT_PARTNER_ORDER_SECRET",
-    notes: "Partner nonprofit clinic. Intakes → KIAN Privé; catalog/orders → Wellness Tech.",
+    notes: partnerRoutingFor("hope-and-haven").routingNote,
   },
 ];
 
@@ -144,13 +154,14 @@ export async function ensureConnectedSites() {
         displayName: seed.displayName,
         kind: seed.kind,
         sourceKey: seed.sourceKey,
-        // Always keep ConnectedSite tied to the clinic's own practice org.
+        // Always keep ConnectedSite tied to the partner's own org (portal tenancy).
         orgId: org.id,
         statusWebhookPath: seed.statusWebhookPath,
         overviewPath: seed.overviewPath,
-        // Keep operator-edited baseUrl/notes if already set.
+        // Always refresh ops notes / kind from routing rules (Alycia source of truth).
+        notes: seed.notes,
+        // Keep operator-edited baseUrl if already set.
         ...(existing?.baseUrl ? {} : { baseUrl: seed.baseUrl }),
-        ...(existing?.notes ? {} : { notes: seed.notes }),
       },
     });
   }

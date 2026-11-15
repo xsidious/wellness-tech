@@ -15,6 +15,7 @@ import {
   type SiteRemoteMetrics,
 } from "@/lib/connected-sites";
 import { money } from "@/lib/money";
+import { PARTNER_ROUTING } from "@/lib/partner-routing";
 import { prisma } from "@/lib/prisma";
 
 function queueItems(remote: SiteRemoteMetrics) {
@@ -50,7 +51,7 @@ export default async function HubControlPage({
       <PageHeader
         kicker="Network hub"
         title="Operations control"
-        lede="KIAN Privé processes intakes, therapy, and payments today. Wellness Tech is the fulfillment hub — oversee patients, prescriptions, pharmacy routing (VitaRelay/Eventide), subscriptions, and partner sites here."
+        lede="KIAN Privé processes intakes, telemedicine, bloodwork, therapy, and payments today. Wellness Tech is the fulfillment hub — oversee patients, prescriptions, pharmacy routing (VitaRelay/Eventide), subscriptions, and partner sites here."
         actions={
           <div className="ws-head-actions">
             <Link className="btn btn-ghost" href="/admin/sites">
@@ -88,6 +89,55 @@ export default async function HubControlPage({
           tone={remote.distributionErrors ? "warn" : "ok"}
         />
       </div>
+
+      <SectionCard
+        title="Clinical capabilities (on KIAN)"
+        description="Answer for ops: what lives in the processor today vs what is fulfillment-only on Wellness Tech."
+      >
+        <ul className="ws-steps">
+          <li>
+            <b>Telemedicine</b> — yes on KIAN (bookings + physician telemedicine consults). Not a separate multi-state IDN marketplace; out-of-state coverage for partners follows each site’s routing rule (e.g. 4everglow uses telehealth OOS).
+          </li>
+          <li>
+            <b>Bloodwork / labs</b> — yes on KIAN (comprehensive bloodwork booking, lab-panel services, NEEDS_LABS intake status).
+          </li>
+          <li>
+            <b>Pharmacy / Rx fulfillment</b> — Wellness Tech → VitaRelay / Eventide after KIAN payment.
+          </li>
+        </ul>
+      </SectionCard>
+
+      <SectionCard
+        title="Partner routing rules"
+        description="Source of truth from Alycia — do not treat every connected site as an independent clinic."
+      >
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Partner</th>
+                <th>Kind</th>
+                <th>Clinic?</th>
+                <th>Routing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.values(PARTNER_ROUTING).map((row) => (
+                <tr key={row.site}>
+                  <td>
+                    <b>{row.label}</b>
+                  </td>
+                  <td>
+                    <code>{row.kind}</code>
+                  </td>
+                  <td>{row.isClinic ? "Yes" : "No"}</td>
+                  <td className="muted">{row.routingNote}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Pharmacy routing"
@@ -222,7 +272,10 @@ export default async function HubControlPage({
         )}
       </SectionCard>
 
-      <SectionCard title="Clinic portals" description="Each partner clinic org sees only its patients and orders.">
+      <SectionCard
+        title="Partner portals"
+        description="Each partner org sees only its patients and orders. Hope & Haven is a referral partner (not a clinic)."
+      >
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -238,11 +291,15 @@ export default async function HubControlPage({
               {sites.map((site) => {
                 const m = readLocalMetrics(site.localMetricsJson);
                 const r = readRemoteMetrics(site.remoteMetricsJson);
+                const routing = PARTNER_ROUTING[site.sourceKey as keyof typeof PARTNER_ROUTING];
                 return (
                   <tr key={site.id}>
                     <td>
                       <b>{site.displayName}</b>
-                      <div className="muted">{site.kind}</div>
+                      <div className="muted">
+                        {site.kind}
+                        {routing && !routing.isClinic ? " · not a clinic" : ""}
+                      </div>
                     </td>
                     <td>{m.patients}</td>
                     <td>{m.ordersOpen}</td>

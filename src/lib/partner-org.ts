@@ -53,7 +53,7 @@ const CLINIC_ORGS: ClinicOrgSeed[] = [
     branding: {
       active: true,
       displayName: "Facial Design Studio",
-      tagline: "Facial aesthetics · clinic portal",
+      tagline: "Via KIAN Privé · then Wellness Tech",
       primary: "#2f2a26",
       secondary: "#4a4038",
       accent: "#c9a227",
@@ -69,7 +69,7 @@ const CLINIC_ORGS: ClinicOrgSeed[] = [
     branding: {
       active: true,
       displayName: "4everglow",
-      tagline: "Wellness therapies · clinic portal",
+      tagline: "Own doctor on site · telehealth out of state",
       primary: "#0d4f4f",
       secondary: "#1a6b6b",
       accent: "#e8b86d",
@@ -85,7 +85,7 @@ const CLINIC_ORGS: ClinicOrgSeed[] = [
     branding: {
       active: true,
       displayName: "Threefold Strength",
-      tagline: "Performance medicine · clinic portal",
+      tagline: "Via KIAN Privé · then Wellness Tech",
       primary: "#1e3a5f",
       secondary: "#2d5080",
       accent: "#d97706",
@@ -101,7 +101,7 @@ const CLINIC_ORGS: ClinicOrgSeed[] = [
     branding: {
       active: true,
       displayName: "Hope & Haven",
-      tagline: "International clinic · compounding hub",
+      tagline: "Referral partner · not a clinic · processed by KIAN",
       primary: "#1b4332",
       secondary: "#2d6a4f",
       accent: "#95d5b2",
