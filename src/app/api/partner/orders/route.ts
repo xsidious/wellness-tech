@@ -351,12 +351,17 @@ export async function POST(request: Request) {
       object: order.id,
       after: `${externalRef}:${rxcoreOrderId}`,
     });
+    const refreshed = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: { status: true, splitMessage: true, rxhereOrderId: true },
+    });
     return NextResponse.json({
       ok: true,
       orderId: order.id,
       invoiceNumber: order.invoiceNumber,
-      rxhereOrderId: rxcoreOrderId,
-      status: "submitted",
+      rxhereOrderId: refreshed?.rxhereOrderId || rxcoreOrderId,
+      status: refreshed?.status || "submitted",
+      pharmacyNote: refreshed?.splitMessage || "",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Pharmacy submission failed.";

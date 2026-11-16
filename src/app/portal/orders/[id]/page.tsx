@@ -16,7 +16,7 @@ import { signEscript } from "@/lib/practice-actions";
 import { prisma } from "@/lib/prisma";
 import { trackingHref } from "@/lib/tracking";
 
-const STEPS = ["received", "verified", "compounding", "shipped", "delivered", "submitted", "on_hold"];
+const STEPS = ["received", "awaiting_payment", "verified", "compounding", "shipped", "delivered", "submitted", "on_hold"];
 
 export default async function OrderDetail({
   params,

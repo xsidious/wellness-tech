@@ -78,7 +78,9 @@ const EVENT_STATUS: Record<string, string> = {
   INVOICED: "submitted",
   FULFILLED: "compounding",
   AWAITING_VERIFICATION: "received",
-  awaiting_payment: "submitted",
+  // Practice still owes VitaRelay — do not look "compounding" yet.
+  awaiting_payment: "awaiting_payment",
+  AWAITING_PAYMENT: "awaiting_payment",
   submitted: "submitted",
   processing: "compounding",
   ready_to_ship: "verified",
@@ -92,6 +94,7 @@ const EVENT_STATUS: Record<string, string> = {
   exception: "delayed",
   "order.paid": "submitted",
   "order.invoiced": "submitted",
+  "order.awaiting_payment": "awaiting_payment",
   "order.fulfilled": "compounding",
   "order.shipped": "shipped",
   "order.delivered": "delivered",
@@ -99,6 +102,14 @@ const EVENT_STATUS: Record<string, string> = {
   "order.cancelled": "cancelled",
   "order.canceled": "cancelled",
 };
+
+export function pharmacyPaymentMessage(status: string | null | undefined) {
+  const s = String(status || "").toLowerCase();
+  if (s === "awaiting_payment") {
+    return "VitaRelay order created — awaiting practice payment on the VitaRelay/Eventide account (card on file). Compounding starts after that clears.";
+  }
+  return "";
+}
 
 function baseUrl() {
   return (
@@ -358,8 +369,25 @@ export async function getPrescriberRoute(params: { state?: string; patientId?: s
   return eventideFetch(`/prescriber-route?${q.toString()}`);
 }
 
+function allowSandboxPharmacy() {
+  // Never invent EVT-* IDs in production — clinics would treat them as live.
+  if (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production") {
+    return process.env.ALLOW_SANDBOX_PHARMACY === "1";
+  }
+  return true;
+}
+
 export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
   if (!eventideConfigured()) {
+    if (!allowSandboxPharmacy()) {
+      return {
+        ok: false as const,
+        status: 503,
+        error:
+          "VitaRelay/Eventide API key is not configured in production. Set VITARELAY_API_KEY or EVENTIDE_API_KEY, then retry.",
+        data: {},
+      };
+    }
     const sandboxId = `EVT-${randomBytes(4).toString("hex").toUpperCase()}`;
     return {
       ok: true as const,

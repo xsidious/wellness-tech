@@ -354,14 +354,18 @@ export async function openRxcoreOrder(input: {
         });
         throw new Error(placed.error);
       }
+      const { pharmacyPaymentMessage } = await import("@/lib/eventide");
+      const payNote = pharmacyPaymentMessage(placed.status);
+      const nextStatus =
+        String(placed.status || "").toLowerCase() === "awaiting_payment" ? "awaiting_payment" : "submitted";
       await prisma.order.update({
         where: { id: order.id },
         data: {
           rxcoreOrderId: placed.orderId,
           rxhereOrderId: placed.orderId,
           rxhereBatchId: placed.batchId || "",
-          status: "submitted",
-          splitMessage: "",
+          status: nextStatus,
+          splitMessage: payNote,
           placementError: "",
         },
       });
@@ -379,6 +383,19 @@ export async function openRxcoreOrder(input: {
       },
     });
     throw new Error("Missing patient details required to place with VitaRelay.");
+  }
+
+  // Rx lines without a live VitaRelay key must not look fulfilled in production.
+  if (rxLines.length && (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production")) {
+    if (process.env.ALLOW_SANDBOX_PHARMACY !== "1") {
+      const message =
+        "VitaRelay/Eventide API key is not configured in production. Set VITARELAY_API_KEY or EVENTIDE_API_KEY, then retry.";
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { status: "on_hold", placementError: message, splitMessage: message },
+      });
+      throw new Error(message);
+    }
   }
 
   const rxcoreOrderId = `RXC-${randomBytes(4).toString("hex").toUpperCase()}`;

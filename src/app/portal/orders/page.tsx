@@ -82,7 +82,7 @@ export default async function OrdersPage({
           <input name="q" defaultValue={query} placeholder="Invoice, patient, tracking…" style={{ minWidth: 240 }} />
           <select name="status" defaultValue={status || ""}>
             <option value="">All statuses</option>
-            {["submitted", "received", "verified", "compounding", "shipped", "delivered", "on_hold"].map((s) => (
+            {["submitted", "awaiting_payment", "received", "verified", "compounding", "shipped", "delivered", "on_hold"].map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>

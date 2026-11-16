@@ -148,6 +148,10 @@ export default async function HubControlPage({
           <b>{eventidePharmacy?.name || "Eventide / VitaRelay (seed on first order)"}</b>
           {eventidePharmacy?.region ? ` · ${eventidePharmacy.region}` : null}
         </p>
+        <p className="muted">
+          Live placement is confirmed. If an order stays <code>awaiting_payment</code>, add a practice card on the
+          VitaRelay/Eventide account — compounding will not start until that clears.
+        </p>
         <div className="ws-head-actions">
           <Link className="btn btn-ghost" href="/admin/pharmacies">
             Pharmacy network
