@@ -375,6 +375,13 @@ export async function openRxcoreOrder(input: {
       });
       await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
       await emitOrderEvent(order.id, "order.received");
+      // emitOrderEvent maps order.received → status "received"; keep Eventide billing state visible.
+      if (nextStatus === "awaiting_payment") {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: "awaiting_payment", splitMessage: `${payNote}${sandboxNote}`.trim() },
+        });
+      }
       return placed.orderId;
     }
 

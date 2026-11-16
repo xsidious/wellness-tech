@@ -103,7 +103,9 @@ const EVENT_STATUS: Record<string, string> = {
   "order.canceled": "cancelled",
 };
 
-export function pharmacyPaymentMessage(status: string | null | undefined) {
+export function pharmacyPaymentMessage(status: string | null | undefined, paymentMessage?: string | null) {
+  const explicit = String(paymentMessage || "").trim();
+  if (explicit) return explicit;
   const s = String(status || "").toLowerCase();
   if (s === "awaiting_payment") {
     return "VitaRelay order created — awaiting practice payment on the VitaRelay/Eventide account (card on file). Compounding starts after that clears.";
