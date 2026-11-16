@@ -542,26 +542,56 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
       order_id?: string;
       order_number?: string;
       status?: string;
+      payment_status?: string;
+      environment?: string;
       idempotent_replay?: boolean;
     };
     order_id?: string;
     orderId?: string;
     status?: string;
+    payment_status?: string;
+    environment?: string;
   };
   const orderId =
     payload.data?.order_id ||
     payload.order_id ||
     payload.orderId ||
     "";
+  const status =
+    payload.data?.status ||
+    payload.data?.payment_status ||
+    payload.status ||
+    payload.payment_status ||
+    "AWAITING_VERIFICATION";
+  const environment = String(payload.data?.environment || payload.environment || "").toLowerCase();
+
+  // If VitaRelay returns a real id, fetch it once so we catch awaiting_payment / sandbox billing.
+  let remoteStatus = status;
+  let remoteEnvironment = environment;
+  if (orderId) {
+    try {
+      const remote = await getOrderStatus(orderId);
+      if (remote.ok) {
+        const d =
+          ((remote.data as { data?: Record<string, unknown> })?.data as Record<string, unknown> | undefined) ||
+          (remote.data as Record<string, unknown>);
+        remoteStatus = String(d.status || d.payment_status || remoteStatus);
+        remoteEnvironment = String(d.environment || remoteEnvironment || "").toLowerCase();
+      }
+    } catch {
+      // best-effort
+    }
+  }
 
   return {
     ok: true as const,
-    sandbox: false as const,
+    sandbox: remoteEnvironment === "sandbox",
     orderId,
     orderIds: orderId ? [orderId] : [],
     partnerOrderId: input.partnerOrderId,
     batchId: payload.data?.order_number || "",
-    status: payload.data?.status || payload.status || "AWAITING_VERIFICATION",
+    status: remoteStatus,
+    environment: remoteEnvironment || undefined,
     data: result.data,
   };
 }
@@ -735,8 +765,21 @@ export async function notifyKianStatus(payload: {
 
   const siteKey = payload.partnerSite || "kian-prive";
   const urls = new Set<string>();
-  const primary = process.env.KIAN_STATUS_WEBHOOK_URL?.trim();
-  if (primary) urls.add(primary);
+  const isProd = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+
+  const addUrl = (raw?: string | null) => {
+    const url = String(raw || "").trim();
+    if (!url) return;
+    // Never post fulfillment status to localhost from production.
+    if (isProd && /localhost|127\.0\.0\.1/i.test(url)) return;
+    urls.add(url);
+  };
+
+  addUrl(process.env.KIAN_STATUS_WEBHOOK_URL);
+  // Hard fallback so a bad local .env never strand production callbacks.
+  addUrl(
+    `${(process.env.KIAN_APP_URL || "https://www.kianprive.com").replace(/\/$/, "")}/api/webhooks/wellness-tech-order`,
+  );
 
   // Fan-out to the ConnectedSite status webhook for the originating clinic (and KIAN processor).
   try {
@@ -755,7 +798,7 @@ export async function notifyKianStatus(payload: {
         : `/${site.statusWebhookPath}`;
       // Partner clinics use /api/kian/webhook on their own apps; KIAN uses wellness-tech-order.
       if (site.slug === "kian-prive" || path.includes("wellness-tech-order")) {
-        urls.add(`${base}${path}`);
+        addUrl(`${base}${path}`);
       }
     }
   } catch {

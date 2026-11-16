@@ -15,6 +15,7 @@ import {
   type SiteRemoteMetrics,
 } from "@/lib/connected-sites";
 import { money } from "@/lib/money";
+import { probeEventideReadiness } from "@/lib/eventide-readiness";
 import { PARTNER_ROUTING } from "@/lib/partner-routing";
 import { prisma } from "@/lib/prisma";
 
@@ -28,18 +29,25 @@ export default async function HubControlPage({
   searchParams: Promise<{ refreshed?: string }>;
 }) {
   const q = await searchParams;
-  const [sites, patientsOpen, ordersOpen, prescriptionsPending, eventidePharmacy] = await Promise.all([
-    ensureConnectedSites(),
-    prisma.clinicalPatient.count({
-      where: {
-        kianIntakeId: { not: "" },
-        intakeStatus: { notIn: ["", "APPROVED", "CLOSED", "DECLINED", "PAID"] },
-      },
-    }),
-    prisma.order.count({ where: { status: { notIn: ["delivered", "cancelled", "canceled"] } } }),
-    prisma.order.count({ where: { escriptStatus: "pending_signature" } }),
-    prisma.pharmacy.findFirst({ where: { name: { contains: "Eventide", mode: "insensitive" } } }),
-  ]);
+  const [sites, patientsOpen, ordersOpen, prescriptionsPending, eventidePharmacy, latestVrOrder] =
+    await Promise.all([
+      ensureConnectedSites(),
+      prisma.clinicalPatient.count({
+        where: {
+          kianIntakeId: { not: "" },
+          intakeStatus: { notIn: ["", "APPROVED", "CLOSED", "DECLINED", "PAID"] },
+        },
+      }),
+      prisma.order.count({ where: { status: { notIn: ["delivered", "cancelled", "canceled"] } } }),
+      prisma.order.count({ where: { escriptStatus: "pending_signature" } }),
+      prisma.pharmacy.findFirst({ where: { name: { contains: "Eventide", mode: "insensitive" } } }),
+      prisma.order.findFirst({
+        where: { rxhereOrderId: { not: "" } },
+        orderBy: { createdAt: "desc" },
+        select: { rxhereOrderId: true, invoiceNumber: true, status: true },
+      }),
+    ]);
+  const eventide = await probeEventideReadiness(latestVrOrder?.rxhereOrderId || undefined);
 
   const kian = sites.find((s) => s.slug === "kian-prive");
   const remote = kian ? readRemoteMetrics(kian.remoteMetricsJson) : {};
@@ -140,24 +148,78 @@ export default async function HubControlPage({
       </SectionCard>
 
       <SectionCard
-        title="Pharmacy routing"
-        description="Practice API orders go to VitaRelay/Eventide — they select the dispensing pharmacy. WT attaches the Eventide network lane for oversight."
+        title="Eventide / VitaRelay connection"
+        description="We place through Eventide software (VitaRelay Practice API). RxHere is only a legacy alias — not a separate pharmacy path."
       >
-        <p className="muted" style={{ marginTop: 0 }}>
-          Active network pharmacy:{" "}
-          <b>{eventidePharmacy?.name || "Eventide / VitaRelay (seed on first order)"}</b>
-          {eventidePharmacy?.region ? ` · ${eventidePharmacy.region}` : null}
-        </p>
+        <div className="ws-stat-grid">
+          <StatTile
+            label="API key"
+            value={eventide.keyKind}
+            tone={eventide.keyKind === "live" ? "ok" : "warn"}
+            hint={eventide.configured ? eventide.baseUrl.replace("https://", "") : "missing"}
+          />
+          <StatTile
+            label="Connection"
+            value={eventide.ok ? "Ready" : "Blocked"}
+            tone={eventide.ok ? "ok" : "warn"}
+            hint={eventide.samplePrescriber || "roster"}
+          />
+          <StatTile
+            label="Latest VR order"
+            value={eventide.sampleOrder?.orderNumber || latestVrOrder?.invoiceNumber || "—"}
+            tone={
+              String(eventide.sampleOrder?.paymentStatus || eventide.sampleOrder?.status || "")
+                .toLowerCase()
+                .includes("awaiting")
+                ? "warn"
+                : "neutral"
+            }
+            hint={
+              eventide.sampleOrder
+                ? `${eventide.sampleOrder.status || "—"} / ${eventide.sampleOrder.paymentStatus || "—"}`
+                : latestVrOrder?.status || "none yet"
+            }
+          />
+          <StatTile
+            label="Network pharmacy"
+            value={eventidePharmacy?.name || "Eventide network"}
+            hint={eventidePharmacy?.region || "VitaRelay routes fulfillment"}
+          />
+        </div>
+        {eventide.blockers.length ? (
+          <ul className="ws-steps">
+            {eventide.blockers.map((b) => (
+              <li key={b}>
+                <b>Blocker:</b> {b}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No blockers detected on the Practice API credentials.</p>
+        )}
+        <ul className="ws-steps">
+          {eventide.nextSteps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ul>
         <p className="muted">
-          Live placement is confirmed. If an order stays <code>awaiting_payment</code>, add a practice card on the
-          VitaRelay/Eventide account — compounding will not start until that clears.
+          KIAN status callback: <code>{eventide.kianCallbackUrl}</code>
+          {eventide.sampleOrder?.environment ? (
+            <>
+              {" "}
+              · remote env <code>{eventide.sampleOrder.environment}</code>
+            </>
+          ) : null}
         </p>
         <div className="ws-head-actions">
+          <a className="btn btn-accent" href="https://vitarelay.com/login" target="_blank" rel="noreferrer">
+            Open Eventide / VitaRelay login
+          </a>
+          <Link className="btn btn-ghost" href="/admin/orders">
+            WT orders
+          </Link>
           <Link className="btn btn-ghost" href="/admin/pharmacies">
             Pharmacy network
-          </Link>
-          <Link className="btn btn-ghost" href="/admin/prescriptions">
-            Prescriptions
           </Link>
           <Link className="btn btn-ghost" href="/admin/products">
             Formulary

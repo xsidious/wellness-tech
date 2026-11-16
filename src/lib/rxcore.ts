@@ -356,6 +356,10 @@ export async function openRxcoreOrder(input: {
       }
       const { pharmacyPaymentMessage } = await import("@/lib/eventide");
       const payNote = pharmacyPaymentMessage(placed.status);
+      const sandboxNote =
+        "sandbox" in placed && placed.sandbox
+          ? " VitaRelay marked this order environment=sandbox — confirm live Eventide practice billing is activated."
+          : "";
       const nextStatus =
         String(placed.status || "").toLowerCase() === "awaiting_payment" ? "awaiting_payment" : "submitted";
       await prisma.order.update({
@@ -365,7 +369,7 @@ export async function openRxcoreOrder(input: {
           rxhereOrderId: placed.orderId,
           rxhereBatchId: placed.batchId || "",
           status: nextStatus,
-          splitMessage: payNote,
+          splitMessage: `${payNote}${sandboxNote}`.trim(),
           placementError: "",
         },
       });
