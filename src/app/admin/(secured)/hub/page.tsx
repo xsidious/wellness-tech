@@ -172,7 +172,7 @@ export default async function HubControlPage({
                 .toLowerCase()
                 .includes("awaiting")
                 ? "warn"
-                : "neutral"
+                : "default"
             }
             hint={
               eventide.sampleOrder
