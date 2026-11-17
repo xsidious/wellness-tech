@@ -7,10 +7,12 @@ import {
   StatusBadge,
   statusTone,
 } from "@/components/portal/Workspace";
+import { AffiliateQrCard } from "@/components/AffiliateQrCard";
 import { ensureAffiliatePartnerLink, updateAffiliateW9 } from "@/lib/affiliate-actions";
 import { requireUser } from "@/lib/guard";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { qrDataUrl } from "@/lib/qr";
 
 export default async function AffiliatePortal({
   searchParams,
@@ -31,6 +33,7 @@ export default async function AffiliatePortal({
   }
 
   const partnerLink = (await ensureAffiliatePartnerLink()) || user.affiliate.partnerLink;
+  const qr = partnerLink ? await qrDataUrl(partnerLink, 280) : "";
   const [accounts, commissions, downline, referredOrders, settlements] = await Promise.all([
     prisma.organization.findMany({ where: { referringAffiliateId: user.id } }),
     prisma.commission.findMany({
@@ -80,15 +83,15 @@ export default async function AffiliatePortal({
         <StatTile label="Downline" value={downline.length} />
       </div>
 
-      <SectionCard title="Partner link" description="Attribution sticks on the practice organization forever.">
-        <div className="ws-kv">
+      <SectionCard
+        title="Partner QR + link"
+        description="Print or share the QR. Phones scan into Wellness Tech signup with your code."
+      >
+        <AffiliateQrCard code={user.affiliate.code} partnerLink={partnerLink} qrDataUrl={qr} />
+        <div className="ws-kv" style={{ marginTop: 16 }}>
           <div>
             <span>Code</span>
             <strong>{user.affiliate.code}</strong>
-          </div>
-          <div>
-            <span>Link</span>
-            <strong style={{ wordBreak: "break-all" }}>{partnerLink}</strong>
           </div>
           <div>
             <span>W-9</span>

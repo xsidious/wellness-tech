@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AffiliateQrCard } from "@/components/AffiliateQrCard";
 import { AdminProvisionForm } from "@/components/AdminProvisionForm";
 import {
   EmptyState,
@@ -10,6 +11,7 @@ import {
 import { runAffiliatePayout } from "@/lib/affiliate-actions";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { qrDataUrl } from "@/lib/qr";
 
 export default async function AdminAffiliatesPage() {
   const affiliates = await prisma.affiliateProfile.findMany({
@@ -20,6 +22,17 @@ export default async function AdminAffiliatesPage() {
     },
     orderBy: { code: "asc" },
   });
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://www.wellnesstechdistribution.com").replace(
+    /\/$/,
+    "",
+  );
+  const affiliatesWithQr = await Promise.all(
+    affiliates.map(async (row) => {
+      const partnerLink = row.partnerLink || `${appUrl}/signup?ref=${row.code}`;
+      const qr = await qrDataUrl(partnerLink, 160);
+      return { ...row, partnerLink, qr };
+    }),
+  );
   const commissions = await prisma.commission.findMany({
     orderBy: { createdAt: "desc" },
     take: 40,
@@ -50,14 +63,14 @@ export default async function AdminAffiliatesPage() {
       </SectionCard>
 
       <SectionCard title="Affiliate partners">
-        {affiliates.length ? (
+        {affiliatesWithQr.length ? (
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
                   <th>Code</th>
                   <th>Name</th>
-                  <th>Partner link</th>
+                  <th>QR / partner link</th>
                   <th>Parent</th>
                   <th>Downline</th>
                   <th>W-9</th>
@@ -65,7 +78,7 @@ export default async function AdminAffiliatesPage() {
                 </tr>
               </thead>
               <tbody>
-                {affiliates.map((row) => (
+                {affiliatesWithQr.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <b>{row.code}</b>
@@ -77,8 +90,13 @@ export default async function AdminAffiliatesPage() {
                         <Link href={`/admin/practices/${row.user.orgId}`}>{row.user.org.legalName}</Link>
                       </div>
                     </td>
-                    <td className="muted" style={{ maxWidth: 220, wordBreak: "break-all" }}>
-                      {row.partnerLink || `/?ref=${row.code}`}
+                    <td style={{ minWidth: 280 }}>
+                      <AffiliateQrCard
+                        code={row.code}
+                        partnerLink={row.partnerLink}
+                        qrDataUrl={row.qr}
+                        compact
+                      />
                     </td>
                     <td>{row.parent?.code || "—"}</td>
                     <td>{row.children.map((c) => c.code).join(", ") || "—"}</td>
