@@ -38,7 +38,10 @@ export function securityHeaders(res: Response) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.headers.set(
+    "Permissions-Policy",
+    'camera=(self "https://*.daily.co" "https://meet.jit.si"), microphone=(self "https://*.daily.co" "https://meet.jit.si"), geolocation=()',
+  );
   res.headers.set("X-XSS-Protection", "1; mode=block");
   res.headers.set("Cross-Origin-Opener-Policy", "same-origin");
   res.headers.set("Cross-Origin-Resource-Policy", "same-site");
@@ -48,7 +51,7 @@ export function securityHeaders(res: Response) {
   if (!res.headers.has("Content-Security-Policy")) {
     res.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+      "default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://*.daily.co; frame-src https://challenges.cloudflare.com https://*.daily.co https://meet.jit.si; connect-src 'self' https:; media-src 'self' https: blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
     );
   }
   return res;

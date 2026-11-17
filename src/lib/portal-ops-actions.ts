@@ -383,26 +383,160 @@ export async function createPracticeForm(formData: FormData) {
   redirect("/portal/forms?created=1");
 }
 
+function dayKey(d: Date) {
+  const map = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+  return map[d.getDay()];
+}
+
+function parseWorkingHours(raw?: string | null) {
+  try {
+    return JSON.parse(raw || "{}") as {
+      hours?: Record<string, { open: string; close: string; enabled: boolean }>;
+      visitLengthMin?: number;
+      bookAheadDays?: number;
+    };
+  } catch {
+    return {};
+  }
+}
+
+function timeToMinutes(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+async function assertTelehealthSlotAvailable(input: {
+  orgId: string;
+  startsAt: Date;
+  durationMin: number;
+  workingHoursJson?: string | null;
+}) {
+  const hours = parseWorkingHours(input.workingHoursJson);
+  const ahead = hours.bookAheadDays ?? 30;
+  const max = new Date();
+  max.setDate(max.getDate() + ahead);
+  if (input.startsAt > max) {
+    return { ok: false as const, error: `Book within the next ${ahead} days.` };
+  }
+  if (input.startsAt.getTime() < Date.now() - 5 * 60 * 1000) {
+    return { ok: false as const, error: "Start time must be in the future." };
+  }
+  const key = dayKey(input.startsAt);
+  const day = hours.hours?.[key];
+  if (day && day.enabled === false) {
+    return { ok: false as const, error: "That day is closed in working hours." };
+  }
+  if (day?.open && day?.close) {
+    const mins = input.startsAt.getHours() * 60 + input.startsAt.getMinutes();
+    if (mins < timeToMinutes(day.open) || mins + input.durationMin > timeToMinutes(day.close)) {
+      return { ok: false as const, error: `Outside working hours (${day.open}–${day.close}).` };
+    }
+  }
+  const endsAt = new Date(input.startsAt.getTime() + input.durationMin * 60_000);
+  const windowStart = new Date(input.startsAt.getTime() - 6 * 60 * 60_000);
+  const nearby = await prisma.telehealthVisit.findMany({
+    where: {
+      orgId: input.orgId,
+      status: { in: ["scheduled", "in_progress"] },
+      kind: { in: ["scheduled", "instant", "blocked"] },
+      startsAt: { gte: windowStart, lt: endsAt },
+    },
+    take: 40,
+  });
+  for (const row of nearby) {
+    const rowEnd = new Date(row.startsAt.getTime() + row.durationMin * 60_000);
+    if (row.startsAt < endsAt && rowEnd > input.startsAt) {
+      return { ok: false as const, error: "Conflicts with an existing visit or blocked time." };
+    }
+  }
+  // Blocked rows use status scheduled historically; also check kind=blocked
+  const blocks = await prisma.telehealthVisit.findMany({
+    where: {
+      orgId: input.orgId,
+      kind: "blocked",
+      startsAt: { gte: windowStart, lt: endsAt },
+    },
+    take: 40,
+  });
+  for (const row of blocks) {
+    const rowEnd = new Date(row.startsAt.getTime() + row.durationMin * 60_000);
+    if (row.startsAt < endsAt && rowEnd > input.startsAt) {
+      return { ok: false as const, error: "Conflicts with an existing visit or blocked time." };
+    }
+  }
+  return { ok: true as const };
+}
+
 export async function scheduleTelehealthVisit(formData: FormData) {
   const user = await requireUser();
   assertPracticeClinical(rolesOf(user.roles));
   const startsAt = new Date(String(formData.get("startsAt") || ""));
-  if (Number.isNaN(startsAt.getTime())) throw new Error("Valid start time required");
-  await prisma.telehealthVisit.create({
+  if (Number.isNaN(startsAt.getTime())) redirect("/portal/telehealth?error=Valid+start+time+required");
+  const durationMin = Number(formData.get("durationMin") || 30) || 30;
+  const clinicalPatientId = String(formData.get("clinicalPatientId") || "");
+  let patientName = String(formData.get("patientName") || "Patient").trim();
+  let patientEmail = String(formData.get("patientEmail") || "").trim().toLowerCase();
+  if (clinicalPatientId) {
+    const patient = await prisma.clinicalPatient.findFirst({
+      where: { id: clinicalPatientId, orgId: user.orgId },
+    });
+    if (patient) {
+      patientName = patient.fullName || patientName;
+      patientEmail = patient.email || patientEmail;
+    }
+  }
+  const org = await prisma.organization.findUnique({ where: { id: user.orgId } });
+  const slot = await assertTelehealthSlotAvailable({
+    orgId: user.orgId,
+    startsAt,
+    durationMin,
+    workingHoursJson: org?.workingHoursJson,
+  });
+  if (!slot.ok) redirect(`/portal/telehealth?error=${encodeURIComponent(slot.error)}`);
+
+  const { createDailyRoom, mintJoinToken, hashJoinToken } = await import("@/lib/daily");
+  const room = await createDailyRoom({
+    durationMin,
+    startsAt,
+    name: `wt-${user.orgId.slice(0, 6)}-${Date.now().toString(36)}`,
+  });
+  if (!room.ok) redirect(`/portal/telehealth?error=${encodeURIComponent(room.error)}`);
+  const joinToken = mintJoinToken();
+  const visit = await prisma.telehealthVisit.create({
     data: {
       orgId: user.orgId,
       providerUserId: user.id,
-      clinicalPatientId: String(formData.get("clinicalPatientId") || ""),
-      patientName: String(formData.get("patientName") || "Patient"),
+      clinicalPatientId,
+      patientName,
+      patientEmail,
       startsAt,
-      durationMin: Number(formData.get("durationMin") || 30) || 30,
+      durationMin,
       notes: String(formData.get("notes") || ""),
-      meetingUrl: String(formData.get("meetingUrl") || ""),
+      meetingUrl: room.url,
+      meetingRoomName: room.roomName,
+      patientJoinToken: joinToken,
+      patientJoinTokenHash: hashJoinToken(joinToken),
       status: "scheduled",
+      kind: "scheduled",
     },
   });
+
+  if (patientEmail.includes("@")) {
+    const joinUrl = `${appUrl()}/visit/${joinToken}`;
+    try {
+      await sendTransactionalEmail({
+        to: patientEmail,
+        subject: `Telehealth visit with ${user.org.legalName}`,
+        text: `Your visit is ${startsAt.toLocaleString()}. Join: ${joinUrl}`,
+        html: `<p>Your telehealth visit is scheduled for <strong>${startsAt.toLocaleString()}</strong>.</p><p><a href="${joinUrl}">Join visit</a></p><p>Provider: ${user.name}</p>`,
+      });
+    } catch (error) {
+      console.error("telehealth invite email failed", error);
+    }
+  }
+
   revalidatePath("/portal/telehealth");
-  redirect("/portal/telehealth?scheduled=1");
+  redirect(`/portal/telehealth?scheduled=1&visit=${visit.id}`);
 }
 
 export async function createPatientInvoice(formData: FormData) {
@@ -583,7 +717,14 @@ export async function startInstantVisit(formData: FormData) {
   const user = await requireUser();
   assertPracticeClinical(rolesOf(user.roles));
   const startsAt = new Date();
-  const meetingUrl = String(formData.get("meetingUrl") || "").trim() || `https://meet.jit.si/wt-${user.orgId.slice(0, 8)}-${Date.now().toString(36)}`;
+  const { createDailyRoom, mintJoinToken, hashJoinToken } = await import("@/lib/daily");
+  const room = await createDailyRoom({
+    durationMin: 30,
+    startsAt,
+    name: `wt-live-${user.orgId.slice(0, 6)}-${Date.now().toString(36)}`,
+  });
+  if (!room.ok) redirect(`/portal/telehealth?error=${encodeURIComponent(room.error)}`);
+  const joinToken = mintJoinToken();
   const visit = await prisma.telehealthVisit.create({
     data: {
       orgId: user.orgId,
@@ -594,12 +735,35 @@ export async function startInstantVisit(formData: FormData) {
       startsAt,
       durationMin: 30,
       status: "in_progress",
-      meetingUrl,
+      meetingUrl: room.url,
+      meetingRoomName: room.roomName,
+      patientJoinToken: joinToken,
+      patientJoinTokenHash: hashJoinToken(joinToken),
       notes: String(formData.get("notes") || ""),
     },
   });
   revalidatePath("/portal/telehealth");
-  redirect(`/portal/telehealth?instant=${visit.id}`);
+  redirect(`/portal/telehealth/${visit.id}/room`);
+}
+
+export async function updateTelehealthVisitStatus(formData: FormData) {
+  const user = await requireUser();
+  assertPracticeClinical(rolesOf(user.roles));
+  const id = String(formData.get("id") || "");
+  const status = String(formData.get("status") || "").trim();
+  if (!["in_progress", "completed", "cancelled", "no_show"].includes(status)) {
+    redirect("/portal/telehealth?error=Invalid+status");
+  }
+  await prisma.telehealthVisit.updateMany({
+    where: { id, orgId: user.orgId },
+    data: {
+      status,
+      completedAt: status === "completed" || status === "cancelled" || status === "no_show" ? new Date() : null,
+    },
+  });
+  revalidatePath("/portal/telehealth");
+  revalidatePath(`/portal/telehealth/${id}/room`);
+  redirect(status === "in_progress" ? `/portal/telehealth/${id}/room` : "/portal/telehealth");
 }
 
 export async function saveWorkingHours(formData: FormData) {

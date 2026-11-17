@@ -28,7 +28,14 @@ function startOfWeek(d = new Date()) {
 export default async function TelehealthPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scheduled?: string; blocked?: string; instant?: string; hours?: string }>;
+  searchParams: Promise<{
+    scheduled?: string;
+    blocked?: string;
+    instant?: string;
+    hours?: string;
+    error?: string;
+    visit?: string;
+  }>;
 }) {
   const user = await requireUser();
   const notices = await searchParams;
@@ -73,9 +80,9 @@ export default async function TelehealthPage({
   return (
     <div className="ws-stack">
       <PageHeader
-        kicker="HIPAA-secure video visits"
-        title="Scheduling"
-        lede="Every provider’s visits, blocked time and open hours. Click a slot workflow, start an instant visit, or set booking rules."
+        kicker="Telehealth"
+        title="Visits & schedule"
+        lede="Daily.co rooms with waiting room, patient join links, and working-hours enforcement. Instant visits open the provider room immediately."
         actions={
           <form action={startInstantVisit}>
             <input type="hidden" name="patientName" value="Instant visit" />
@@ -85,15 +92,16 @@ export default async function TelehealthPage({
           </form>
         }
       />
-      {notices.scheduled ? <p className="note">Visit scheduled.</p> : null}
+      {notices.error ? <p className="error">{notices.error}</p> : null}
+      {notices.scheduled ? <p className="note">Visit scheduled{notices.visit ? " — patient invite emailed when an address is on file." : "."}</p> : null}
       {notices.blocked ? <p className="note">Time blocked.</p> : null}
       {notices.hours ? <p className="note">Working hours saved.</p> : null}
       {instant ? (
         <p className="note">
           Instant visit live —{" "}
-          <a className="ws-text-link" href={instant.meetingUrl} target="_blank" rel="noreferrer">
-            join room
-          </a>
+          <Link className="ws-text-link" href={`/portal/telehealth/${instant.id}/room`}>
+            open room
+          </Link>
         </p>
       ) : null}
 
@@ -140,10 +148,10 @@ export default async function TelehealthPage({
                               <b>{v.startsAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</b>
                             </div>
                             <div className="muted">{v.patientName}</div>
-                            {v.meetingUrl && v.kind !== "blocked" ? (
-                              <a className="ws-text-link" href={v.meetingUrl} target="_blank" rel="noreferrer">
+                            {v.kind !== "blocked" ? (
+                              <Link className="ws-text-link" href={`/portal/telehealth/${v.id}/room`}>
                                 Join
-                              </a>
+                              </Link>
                             ) : null}
                           </div>
                         ))
@@ -179,16 +187,16 @@ export default async function TelehealthPage({
                 <input name="patientName" required />
               </label>
               <label>
+                Patient email (join link)
+                <input name="patientEmail" type="email" placeholder="optional" />
+              </label>
+              <label>
                 Starts at
                 <input name="startsAt" type="datetime-local" required />
               </label>
               <label>
                 Duration (min)
                 <input name="durationMin" type="number" defaultValue={hours.visitLengthMin || 30} min={10} max={180} />
-              </label>
-              <label>
-                Meeting URL
-                <input name="meetingUrl" placeholder="Leave blank to auto-create Jitsi" />
               </label>
             </div>
             <label>
@@ -272,7 +280,7 @@ export default async function TelehealthPage({
           </button>
         </form>
         <p className="muted" style={{ marginTop: 12 }}>
-          Google Calendar OAuth sync can be connected later via env credentials; blocked time and working hours already gate booking here.
+          Working hours and book-ahead rules gate new visits. Video uses Daily.co when <code>DAILY_API_KEY</code> is set (Jitsi fallback in local/dev).
         </p>
       </SectionCard>
 
@@ -296,6 +304,13 @@ export default async function TelehealthPage({
                     <td>{v.kind}</td>
                     <td>
                       <StatusBadge tone={statusTone(v.status)}>{v.status}</StatusBadge>
+                    </td>
+                    <td>
+                      {v.kind !== "blocked" ? (
+                        <Link className="ws-text-link" href={`/portal/telehealth/${v.id}/room`}>
+                          Room
+                        </Link>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

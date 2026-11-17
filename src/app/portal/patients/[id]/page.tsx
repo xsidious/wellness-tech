@@ -62,6 +62,17 @@ export default async function PatientChartPage({
     patient.signaturesJson || latest?.signaturesJson || "[]",
     [],
   );
+  const upcomingVisits = await prisma.telehealthVisit.findMany({
+    where: {
+      orgId: user.orgId,
+      clinicalPatientId: patient.id,
+      kind: { not: "blocked" },
+      status: { in: ["scheduled", "in_progress"] },
+      startsAt: { gte: new Date(Date.now() - 60 * 60_000) },
+    },
+    orderBy: { startsAt: "asc" },
+    take: 5,
+  });
 
   return (
     <div className="ws-stack">
@@ -90,6 +101,21 @@ export default async function PatientChartPage({
       />
       {notices.invited ? (
         <p className="note">Portal invite email sent to {patient.email}. Status: {portalStatus}.</p>
+      ) : null}
+
+      {upcomingVisits.length ? (
+        <SectionCard title="Upcoming telehealth" description="Visits linked to this chart.">
+          <ul className="ws-message-list">
+            {upcomingVisits.map((v) => (
+              <li key={v.id}>
+                {v.startsAt.toLocaleString()} · {v.status}{" "}
+                <Link className="ws-text-link" href={`/portal/telehealth/${v.id}/room`}>
+                  Open room
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
       ) : null}
 
       <div className="ws-stat-grid">

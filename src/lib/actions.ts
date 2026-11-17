@@ -308,7 +308,7 @@ export async function completeSignup(formData: FormData) {
       accountType === "affiliate"
         ? ["affiliate"]
         : accountType === "telehealth"
-          ? ["owner", "api_client"]
+          ? ["owner", "prescriber"]
           : ["owner", "prescriber"];
 
     // Join an existing partner clinic org when signup includes ?clinic=code

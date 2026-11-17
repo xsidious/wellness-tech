@@ -8,7 +8,57 @@ import { tierLabel } from "@/lib/rules";
 function practiceGroups(
   billingOnly: boolean,
   badges?: { refills?: number; messages?: number; unpaid?: number; scripts?: number; alerts?: number },
+  prescriberOnly = false,
 ): PortalNavGroup[] {
+  if (prescriberOnly) {
+    return [
+      {
+        label: "Clinical",
+        links: [
+          { href: "/portal", label: "My queue", exact: true },
+          {
+            href: "/portal/notifications",
+            label: "Notifications",
+            badge: badges?.alerts || undefined,
+          },
+          {
+            href: "/portal/script-requests",
+            label: "eScripts",
+            badge: badges?.scripts || undefined,
+          },
+          {
+            href: "/portal/refills",
+            label: "Refills",
+            badge: badges?.refills || undefined,
+          },
+          { href: "/portal/telehealth", label: "Telehealth" },
+          { href: "/portal/patients", label: "Patients" },
+        ],
+      },
+      {
+        label: "Ordering",
+        links: [
+          { href: "/portal/catalog", label: "Marketplace" },
+          { href: "/portal/orders", label: "Orders" },
+          { href: "/portal/cart", label: "Cart" },
+        ],
+      },
+      {
+        label: "Account",
+        links: [
+          { href: "/portal/practitioners", label: "My credentials" },
+          {
+            href: "/portal/messages",
+            label: "Messages",
+            badge: badges?.messages || undefined,
+          },
+          { href: "/portal/support", label: "Support" },
+          { href: "/portal/education", label: "Education" },
+        ],
+      },
+    ];
+  }
+
   return [
     {
       label: "Overview",
@@ -54,7 +104,7 @@ function practiceGroups(
       label: "Practice",
       links: [
         { href: "/portal/team", label: "Team" },
-        { href: "/portal/telehealth", label: "Scheduling" },
+        { href: "/portal/telehealth", label: "Telehealth" },
         { href: "/portal/invoices", label: "Wholesale invoices", badge: badges?.unpaid || undefined },
         { href: "/portal/patient-invoices", label: "Patient invoices" },
         { href: "/portal/settings?tab=texts", label: "Texts & calls" },
@@ -185,6 +235,12 @@ export function PortalFrame({
     roles.includes("billing") && !roles.some((role) => ["owner", "prescriber", "staff", "admin"].includes(role));
   const affiliateOnly =
     roles.includes("affiliate") && !roles.some((role) => ["owner", "prescriber", "staff"].includes(role));
+  const prescriberOnly =
+    roles.includes("prescriber") &&
+    !roles.includes("owner") &&
+    !roles.includes("admin") &&
+    !billingOnly &&
+    !affiliateOnly;
 
   const mode =
     workspace ||
@@ -197,7 +253,7 @@ export function PortalFrame({
         ? pharmacyGroups
         : mode === "affiliate"
           ? affiliateGroups
-          : practiceGroups(billingOnly, badges);
+          : practiceGroups(billingOnly, badges, prescriberOnly);
   const home = mode === "admin" ? "/admin" : mode === "pharmacy" ? "/pharmacy" : "/portal";
   const sideLabel = mode === "pharmacy" ? "Pharmacy partner" : admin ? "Administrator" : tierLabel(user.org.verificationTier);
 

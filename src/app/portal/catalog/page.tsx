@@ -7,6 +7,7 @@ import {
 import { CatalogAddForm } from "@/components/portal/CatalogAddForm";
 import { CatalogSideCart } from "@/components/portal/CatalogSideCart";
 import { requireUser, rolesOf } from "@/lib/guard";
+import { buildCatalogCompareIndex, peerPriceForProduct } from "@/lib/catalog-compare";
 import { money } from "@/lib/money";
 import { photoForClass } from "@/lib/photos";
 import { submitCompoundRequest, toggleRxFavorite } from "@/lib/portal-ops-actions";
@@ -149,6 +150,7 @@ export default async function CatalogPage({
     }).ok,
   ).length;
   const tierBlocked = user.org.verificationTier < 1;
+  const compareIndex = buildCatalogCompareIndex(products);
 
   const cartProductIds = cartItems.map((item) => item.productId);
   const cartProducts = cartProductIds.length
@@ -287,6 +289,7 @@ export default async function CatalogPage({
             });
             const fav = favSet.has(product.sku);
             const vendorName = vendorOf(product.category) === "prescribeusa" ? "PrescribeUSA" : "Eventide";
+            const peer = showPrice ? peerPriceForProduct(product, compareIndex) : null;
             return (
               <article className="mk-card" key={product.id}>
                 <div className="mk-card-media">
@@ -310,9 +313,21 @@ export default async function CatalogPage({
                     {[product.strength, product.form, product.size].filter(Boolean).join(" · ") || "Formulary item"}
                   </p>
                   <div className="mk-card-price-row">
-                    <strong className="mk-price">
-                      {!showPrice ? "—" : product.priceCents ? money(product.priceCents) : "Ask"}
-                    </strong>
+                    <div className="mk-price-stack">
+                      <strong className="mk-price">
+                        {!showPrice ? "—" : product.priceCents ? money(product.priceCents) : "Ask"}
+                      </strong>
+                      {peer ? (
+                        <span
+                          className={`mk-price-peer${
+                            peer.cheaper === peer.peerVendor ? " mk-price-peer-cheaper" : ""
+                          }`}
+                        >
+                          {peer.peerVendor === "prescribeusa" ? "PUSA" : "Eventide"} {money(peer.peerPriceCents)}
+                          {peer.cheaper === peer.peerVendor ? " · cheaper" : ""}
+                        </span>
+                      ) : null}
+                    </div>
                     {fav ? <StatusBadge tone="ok">Favorite</StatusBadge> : null}
                   </div>
 

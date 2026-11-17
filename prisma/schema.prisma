@@ -628,22 +628,28 @@ model RxFavorite {
 }
 
 model TelehealthVisit {
-  id                String       @id @default(cuid())
-  orgId             String
-  org               Organization @relation(fields: [orgId], references: [id])
-  providerUserId    String       @default("")
-  clinicalPatientId String       @default("")
-  patientName       String       @default("")
+  id                   String       @id @default(cuid())
+  orgId                String
+  org                  Organization @relation(fields: [orgId], references: [id])
+  providerUserId       String       @default("")
+  clinicalPatientId    String       @default("")
+  patientName          String       @default("")
+  patientEmail         String       @default("")
   /// scheduled | blocked | instant
-  kind              String       @default("scheduled")
-  startsAt          DateTime
-  durationMin       Int          @default(30)
-  status            String       @default("scheduled")
-  notes             String       @default("")
-  meetingUrl        String       @default("")
-  createdAt         DateTime     @default(now())
+  kind                 String       @default("scheduled")
+  startsAt             DateTime
+  durationMin          Int          @default(30)
+  status               String       @default("scheduled")
+  notes                String       @default("")
+  meetingUrl           String       @default("")
+  meetingRoomName      String       @default("")
+  patientJoinTokenHash String       @default("")
+  patientJoinToken     String       @default("")
+  completedAt          DateTime?
+  createdAt            DateTime     @default(now())
 
   @@index([orgId, startsAt])
+  @@index([patientJoinTokenHash])
 }
 
 model CoaDocument {

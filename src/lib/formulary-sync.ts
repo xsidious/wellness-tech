@@ -284,66 +284,168 @@ export async function blockLegacyNonEventideProducts() {
   return blocked;
 }
 
-/** Upsert PrescribeUSA pen catalog into practice products (separate from Eventide). */
+export type PrescribeUsaImportRow = {
+  sheetId?: string;
+  sku: string;
+  name: string;
+  category: string;
+  subcategory?: string;
+  rxRequired?: boolean;
+  form?: string;
+  deliveryMethod?: string;
+  strength?: string;
+  size?: string;
+  storage?: string;
+  wholesaleDollars?: number;
+  priceCents?: number;
+  description?: string;
+};
+
+function loadPrescribeUsaRows(): PrescribeUsaImportRow[] {
+  const candidates = [
+    resolve(process.cwd(), "data/pusa-products.json"),
+    resolve(process.cwd(), "../wellness-tech/data/pusa-products.json"),
+  ];
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    const raw = JSON.parse(readFileSync(path, "utf8")) as {
+      products?: PrescribeUsaImportRow[];
+    };
+    if (Array.isArray(raw.products) && raw.products.length) return raw.products;
+  }
+  // Fallback: legacy pens list if JSON snapshot missing.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { prescribeUsaPensCatalog } = require("@/lib/prescribeusa-pens-catalog") as {
+      prescribeUsaPensCatalog: Array<{
+        sku: string;
+        name: string;
+        category: string;
+        size: string;
+        strength: string;
+        priceCents: number;
+        description: string;
+      }>;
+    };
+    return prescribeUsaPensCatalog.map((line) => ({
+      sku: line.sku,
+      name: line.name,
+      category: line.category.replace(/^PrescribeUSA(?:\s*Pens)?(?:\s*·\s*)?/i, "") || "Pens",
+      form: "Pre-Filled Injectable Pen",
+      strength: line.strength,
+      size: line.size,
+      storage: "Refrigerated",
+      priceCents: line.priceCents,
+      description: line.description,
+      rxRequired: true,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function pusaImageForForm(form: string) {
+  const f = form.toLowerCase();
+  if (/pen/.test(f)) {
+    return "https://vitarelay.com/__l5e/assets-v1/7a5eff76-3f46-4d87-8a50-de34ef7f27ff/injection-pen.png";
+  }
+  if (/inj|vial|lyoph|solution/.test(f)) {
+    return "https://vitarelay.com/__l5e/assets-v1/0cffe580-da37-48f8-b0d1-5a07027e056b/lyophilized-powder.png";
+  }
+  return "https://vitarelay.com/__l5e/assets-v1/93425fa8-8402-43ab-ba6b-edf2329a9d39/serum-bottle.png";
+}
+
+function pusaStorage(raw: string) {
+  const s = raw.toLowerCase();
+  if (/refrig|cold|2.?8/.test(s)) return "cold";
+  return "ambient";
+}
+
+/** Upsert PrescribeUSA catalog (sheet snapshot) into practice products — separate from Eventide. */
 export async function syncPrescribeUsaCatalog(actorId = "") {
-  const { prescribeUsaPensCatalog } = await import("@/lib/prescribeusa-pens-catalog");
+  const rows = loadPrescribeUsaRows();
+  if (!rows.length) {
+    return { ok: false as const, error: "No PrescribeUSA rows found in data/pusa-products.json." };
+  }
   const syncedAt = new Date();
   let upserted = 0;
-  const penImage =
-    "https://vitarelay.com/__l5e/assets-v1/7a5eff76-3f46-4d87-8a50-de34ef7f27ff/injection-pen.png";
+  let skipped = 0;
 
-  for (const line of prescribeUsaPensCatalog) {
-    const category = line.category.startsWith("PrescribeUSA")
-      ? line.category
-      : `PrescribeUSA · ${line.category}`;
+  for (const line of rows) {
+    const sku = String(line.sku || "").trim();
+    if (!sku || !/^PUSA-/i.test(sku)) {
+      skipped += 1;
+      continue;
+    }
+    const name = applyGlpNaming(line.name || sku);
+    if (!name) {
+      skipped += 1;
+      continue;
+    }
+    const rawCategory = applyGlpNaming(line.category || "General");
+    const category = rawCategory.startsWith("PrescribeUSA")
+      ? rawCategory
+      : `PrescribeUSA · ${rawCategory}`;
+    const form = line.form || line.deliveryMethod || "Compound";
+    const strength = line.strength || "";
+    const size = line.size || "";
+    const priceCents =
+      line.priceCents != null && Number.isFinite(Number(line.priceCents))
+        ? Math.round(Number(line.priceCents))
+        : partnerPriceCentsFromFormulary(line.wholesaleDollars ?? 0);
+    const rxRequired = line.rxRequired != null ? Boolean(line.rxRequired) : true;
+    const imageUrl = pusaImageForForm(form);
     const description = [
-      line.description,
-      line.strength ? `Strength: ${line.strength}` : "",
-      line.size ? `Size: ${line.size}` : "",
-      `SKU: ${line.sku}`,
-      `Practice price: $${(line.priceCents / 100).toFixed(2)}`,
-      "Vendor: PrescribeUSA · pre-filled injectable pens.",
+      line.description || "",
+      line.subcategory ? `Subcategory: ${line.subcategory}` : "",
+      form ? `Form: ${form}` : "",
+      strength ? `Strength: ${strength}` : "",
+      size ? `Size: ${size}` : "",
+      line.sheetId ? `PUSA id: ${line.sheetId}` : "",
+      `SKU: ${sku}`,
+      priceCents ? `Practice price: $${(priceCents / 100).toFixed(2)}` : "",
+      "Vendor: PrescribeUSA · separate from Eventide/VitaRelay fulfillment.",
     ]
       .filter(Boolean)
       .join(" · ");
 
     await prisma.product.upsert({
-      where: { sku: line.sku },
+      where: { sku },
       create: {
-        sku: line.sku,
-        rxcoreFormularyId: `pusa-${line.sku.toLowerCase()}`,
-        name: applyGlpNaming(line.name),
+        sku,
+        rxcoreFormularyId: `pusa-${sku.toLowerCase()}`,
+        name,
         productClass: "503A",
         category,
-        form: "Pre-Filled Injectable Pen",
-        strength: line.strength,
-        size: line.size,
-        storage: "refrigerated",
-        rxRequired: true,
+        form,
+        strength,
+        size,
+        storage: pusaStorage(line.storage || ""),
+        rxRequired,
         controlledSubstance: false,
-        priceCents: line.priceCents,
+        priceCents,
         orderable: true,
         active: true,
         holdReason: "",
         description,
-        imageUrl: penImage,
+        imageUrl,
         lastSyncedAt: syncedAt,
       },
       update: {
-        name: applyGlpNaming(line.name),
+        name,
         productClass: "503A",
         category,
-        form: "Pre-Filled Injectable Pen",
-        strength: line.strength,
-        size: line.size,
-        storage: "refrigerated",
-        rxRequired: true,
-        priceCents: line.priceCents,
+        form,
+        strength,
+        size,
+        storage: pusaStorage(line.storage || ""),
+        rxRequired,
+        ...(priceCents > 0 ? { priceCents } : {}),
         orderable: true,
         active: true,
         holdReason: "",
         description,
-        imageUrl: penImage,
+        imageUrl,
         lastSyncedAt: syncedAt,
       },
     });
@@ -357,5 +459,5 @@ export async function syncPrescribeUsaCatalog(actorId = "") {
     after: String(upserted),
   });
 
-  return { ok: true as const, source: "prescribeusa" as const, upserted, skipped: 0, total: upserted, syncedAt };
+  return { ok: true as const, source: "prescribeusa" as const, upserted, skipped, total: rows.length, syncedAt };
 }

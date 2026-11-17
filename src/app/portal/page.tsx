@@ -29,6 +29,174 @@ export default async function PortalHome() {
   const affiliateOnly =
     roles.includes("affiliate") && !roles.includes("owner") && !roles.includes("prescriber");
 
+  const prescriberOnly =
+    roles.includes("prescriber") && !roles.includes("owner") && !roles.includes("admin");
+
+  if (prescriberOnly) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    const [
+      pendingEscripts,
+      dueRefills,
+      openRefillRequests,
+      todayVisits,
+      upcomingVisits,
+      credential,
+      recentPatients,
+    ] = await Promise.all([
+      prisma.order.count({ where: { orgId: user.orgId, escriptStatus: "pending_signature" } }),
+      prisma.refill.count({ where: { orgId: user.orgId, status: "due" } }),
+      prisma.refillRequest.count({
+        where: { status: "requested", clinicalPatient: { orgId: user.orgId } },
+      }),
+      prisma.telehealthVisit.findMany({
+        where: {
+          orgId: user.orgId,
+          providerUserId: user.id,
+          startsAt: { gte: start, lt: end },
+          kind: { not: "blocked" },
+        },
+        orderBy: { startsAt: "asc" },
+        take: 12,
+      }),
+      prisma.telehealthVisit.findMany({
+        where: {
+          orgId: user.orgId,
+          providerUserId: user.id,
+          startsAt: { gte: end },
+          status: { in: ["scheduled", "in_progress"] },
+        },
+        orderBy: { startsAt: "asc" },
+        take: 8,
+      }),
+      prisma.prescriberCredential.findUnique({ where: { userId: user.id } }),
+      prisma.clinicalPatient.findMany({
+        where: { orgId: user.orgId },
+        orderBy: { updatedAt: "desc" },
+        take: 6,
+        select: { id: true, fullName: true, email: true, updatedAt: true },
+      }),
+    ]);
+
+    const attention: AttentionItem[] = [];
+    if (!credential?.npi) {
+      attention.push({ href: "/signup/npi", label: "Add NPI and state license", tone: "warn" });
+    }
+    if (pendingEscripts) {
+      attention.push({
+        href: "/portal/script-requests",
+        label: `${pendingEscripts} eScript${pendingEscripts === 1 ? "" : "s"} awaiting signature`,
+        tone: "warn",
+      });
+    }
+    if (openRefillRequests) {
+      attention.push({
+        href: "/portal/refills",
+        label: `${openRefillRequests} refill request${openRefillRequests === 1 ? "" : "s"}`,
+        tone: "warn",
+      });
+    }
+    if (dueRefills) {
+      attention.push({
+        href: "/portal/refills",
+        label: `${dueRefills} scheduled refill${dueRefills === 1 ? "" : "s"} due`,
+        tone: "warn",
+      });
+    }
+
+    return (
+      <div className="ws-stack">
+        <PageHeader
+          kicker="Clinician"
+          title={`Dr. queue · ${user.name}`}
+          lede="eScripts, refills, and telehealth for your patients — without practice admin tools."
+          actions={
+            <div className="ws-head-actions">
+              <Link className="btn btn-ghost" href="/portal/telehealth">
+                Telehealth
+              </Link>
+              <Link className="btn btn-accent" href="/portal/catalog">
+                Marketplace
+              </Link>
+            </div>
+          }
+        />
+        {attention.length ? <AttentionStrip items={attention} /> : null}
+        <div className="ws-stat-grid">
+          <StatTile label="eScripts to sign" value={pendingEscripts} tone={pendingEscripts ? "warn" : "ok"} />
+          <StatTile label="Refills due" value={dueRefills + openRefillRequests} tone={dueRefills ? "warn" : "ok"} />
+          <StatTile label="Visits today" value={todayVisits.length} tone="accent" />
+        </div>
+        <div className="ws-split">
+          <SectionCard title="Today’s telehealth" description="Your assigned visits.">
+            {todayVisits.length ? (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Patient</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {todayVisits.map((v) => (
+                      <tr key={v.id}>
+                        <td>{v.startsAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</td>
+                        <td>
+                          <b>{v.patientName || "Patient"}</b>
+                        </td>
+                        <td>
+                          <StatusBadge tone={statusTone(v.status)}>{v.status}</StatusBadge>
+                        </td>
+                        <td>
+                          <Link className="ws-text-link" href={`/portal/telehealth/${v.id}/room`}>
+                            Join
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState title="No visits today" body="Schedule or start an instant visit from Telehealth." />
+            )}
+          </SectionCard>
+          <SectionCard title="Clinical shortcuts">
+            <div className="ws-quick-grid">
+              <QuickLink href="/portal/script-requests" title="Sign eScripts" body="Pending pharmacy signatures" />
+              <QuickLink href="/portal/refills" title="Approve refills" body="Patient and scheduled refill queue" />
+              <QuickLink href="/portal/patients" title="Patients" body="Charts and intake history" />
+              <QuickLink href="/portal/practitioners" title="Credentials" body="NPI, license, DEA" />
+            </div>
+            {upcomingVisits.length ? (
+              <p className="muted" style={{ marginTop: 12 }}>
+                Next up: {upcomingVisits[0].patientName || "Patient"} ·{" "}
+                {upcomingVisits[0].startsAt.toLocaleString()}
+              </p>
+            ) : null}
+            {recentPatients.length ? (
+              <ul className="ws-message-list" style={{ marginTop: 12 }}>
+                {recentPatients.map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/portal/patients/${p.id}`} className="ws-text-link">
+                      {p.fullName}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </SectionCard>
+        </div>
+      </div>
+    );
+  }
+
   if (affiliateOnly) {
     const [referredOrgs, pendingCommission, recentCommissions] = await Promise.all([
       prisma.organization.count({ where: { referringAffiliateId: user.id } }),
