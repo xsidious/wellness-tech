@@ -1,15 +1,16 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { ensurePharmacyNetwork } from "@/lib/ensure-pharmacies";
 import { canOrder, commissionCents, isProductClass, routeSource, shippingCents, type ProductClass } from "@/lib/rules";
 import { signWebhook, verifyWebhook } from "@/lib/crypto";
 import {
+  eventideConfigured,
   placePrescriptionOrder,
-  rxhereConfigured,
-  syncPrescriberToVitaRelay,
-  type RxHerePatient,
-  type RxHerePrescriber,
-} from "@/lib/rxhere";
+  resolveEventideFulfillmentPrescriber,
+  type EventidePatient,
+  type EventidePrescriber,
+} from "@/lib/eventide";
 
 const STATUS: Record<string, string> = {
   "order.received": "received",
@@ -140,9 +141,9 @@ export async function emitOrderEvent(orderId: string, type: string, reason?: str
   return ingestWebhook(body, signWebhook(body));
 }
 
-function parsePatientJson(raw: string): RxHerePatient | null {
+function parsePatientJson(raw: string): EventidePatient | null {
   try {
-    const parsed = raw ? (JSON.parse(raw) as RxHerePatient) : null;
+    const parsed = raw ? (JSON.parse(raw) as EventidePatient) : null;
     if (!parsed?.firstName || !parsed?.address?.line1) return null;
     return parsed;
   } catch {
@@ -150,12 +151,12 @@ function parsePatientJson(raw: string): RxHerePatient | null {
   }
 }
 
-function parsePrescriberJson(raw: string): RxHerePrescriber | undefined {
+function parsePrescriberJson(raw: string): EventidePrescriber | undefined {
   try {
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
     if (!parsed) return undefined;
     const npi = String(parsed.npiNumber || parsed.npi || "").replace(/\D/g, "") || undefined;
-    const out: RxHerePrescriber = {
+    const out: EventidePrescriber = {
       npiNumber: npi,
       firstName: String(parsed.firstName || "").trim() || undefined,
       lastName: String(parsed.lastName || "").trim() || undefined,
@@ -177,7 +178,7 @@ async function buildPatientFromOrder(order: {
   patientJson: string;
   clinicalPatientId: string | null;
   shipToJson: string;
-}): Promise<RxHerePatient | null> {
+}): Promise<EventidePatient | null> {
   const fromJson = parsePatientJson(order.patientJson);
   if (fromJson) return fromJson;
   if (!order.clinicalPatientId) return null;
@@ -228,10 +229,10 @@ async function buildPatientFromOrder(order: {
 export async function openRxcoreOrder(input: {
   orderId: string;
   lines: { productClass: ProductClass; patientInitials: string }[];
-  /** Optional; when omitted, patient/prescriber are rebuilt from the order for VitaRelay. */
+  /** Optional; when omitted, patient/prescriber are rebuilt from the order for Eventide. */
   prescription?: {
-    patient: RxHerePatient;
-    prescriber?: RxHerePrescriber;
+    patient: EventidePatient;
+    prescriber?: EventidePrescriber;
     shippingMethod?: "2_DAY" | "OVERNIGHT";
     shippingDestinationType?: "patient_direct" | "practice_office" | "distributor_office";
     platformProductIdBySku?: Record<string, string>;
@@ -251,14 +252,13 @@ export async function openRxcoreOrder(input: {
   }
 
   const rxLines = order.lines.filter((line) => line.productClass === "503A" || line.productClass === "503B");
-  if (rxhereConfigured() && rxLines.length) {
+  if (eventideConfigured() && rxLines.length) {
     let prescription = input.prescription;
     if (!prescription?.patient) {
       const patient = await buildPatientFromOrder(order);
       if (patient) {
         prescription = {
           patient,
-          prescriber: parsePrescriberJson(order.prescriberJson),
           shippingMethod: (order.shippingMethod as "2_DAY" | "OVERNIGHT") || "2_DAY",
         };
       }
@@ -271,55 +271,56 @@ export async function openRxcoreOrder(input: {
           ? "practice_office"
           : "patient_direct");
 
-      let deaFromCredential = "";
-      try {
-        const { decryptField } = await import("@/lib/crypto");
-        const cipher = order.placedBy?.credential?.deaCipher || "";
-        if (cipher) {
-          deaFromCredential = cipher.includes(":") ? decryptField(cipher) || "" : cipher;
-        }
-      } catch {
-        deaFromCredential = "";
+      // Always prefer Eventide's own roster / prescriber-route physicians + their pharmacy network.
+      const resolved = await resolveEventideFulfillmentPrescriber({
+        state: prescription.patient.address.state,
+      });
+      if (!resolved.ok) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: "on_hold", splitMessage: resolved.error, placementError: resolved.error },
+        });
+        return null;
       }
 
-      const cred = order.placedBy?.credential;
-      let licenses: Array<{ state: string; licenseNumber: string }> = [];
-      try {
-        licenses = JSON.parse(cred?.licensesJson || "[]") as Array<{ state: string; licenseNumber: string }>;
-      } catch {
-        licenses = [];
-      }
-
-      const prescriber: RxHerePrescriber = {
-        ...prescription.prescriber,
-        npiNumber:
-          prescription.prescriber?.npiNumber ||
-          cred?.npi ||
-          process.env.EVENTIDE_PRESCRIBER_NPI ||
-          undefined,
-        practiceName: prescription.prescriber?.practiceName || cred?.displayName || order.placedBy?.name,
-        licenseState:
-          prescription.prescriber?.licenseState ||
-          licenses[0]?.state ||
-          process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE ||
-          prescription.patient.address.state,
-        licenseNumber:
-          prescription.prescriber?.licenseNumber ||
-          licenses[0]?.licenseNumber ||
-          process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER ||
-          undefined,
-        deaNumber: prescription.prescriber?.deaNumber || deaFromCredential || undefined,
+      const override = prescription.prescriber;
+      const prescriber: EventidePrescriber = {
+        ...resolved.prescriber,
+        // Explicit partner payload can fill gaps only; Eventide roster NPI/license win when present.
+        npiNumber: resolved.prescriber.npiNumber || override?.npiNumber,
+        licenseNumber: resolved.prescriber.licenseNumber || override?.licenseNumber,
+        licenseState: resolved.prescriber.licenseState || override?.licenseState,
+        deaNumber: resolved.prescriber.deaNumber || override?.deaNumber,
+        firstName: resolved.prescriber.firstName || override?.firstName,
+        lastName: resolved.prescriber.lastName || override?.lastName,
+        practiceName: resolved.prescriber.practiceName || override?.practiceName,
       };
-
-      if (order.placedById && cred?.npi) {
-        await syncPrescriberToVitaRelay(order.placedById).catch(() => null);
-      }
 
       const products = await prisma.product.findMany({
         where: { sku: { in: rxLines.map((line) => line.sku) } },
         select: { sku: true, rxcoreFormularyId: true },
       });
       const formularyBySku = new Map(products.map((p) => [p.sku, p.rxcoreFormularyId]));
+
+      // Attach local Eventide pharmacy row for WT oversight; Eventide still routes compounding.
+      const eventidePharmacy =
+        (await prisma.pharmacy.findFirst({
+          where: { name: { contains: "Eventide", mode: "insensitive" } },
+        })) || (await ensurePharmacyNetwork().then((rows) => rows.find((p) => /eventide/i.test(p.name))));
+      if (eventidePharmacy) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            pharmacyId: eventidePharmacy.id,
+            prescriberJson: JSON.stringify({
+              ...prescriber,
+              eventideRoute: resolved.route,
+              eventideReason: resolved.reason,
+              eventidePrescriberId: resolved.prescriber.eventidePrescriberId,
+            }),
+          },
+        });
+      }
 
       const placed = await placePrescriptionOrder({
         partnerOrderId: order.partnerExternalRef || order.invoiceNumber,
@@ -358,8 +359,9 @@ export async function openRxcoreOrder(input: {
       const payNote = pharmacyPaymentMessage(placed.status);
       const sandboxNote =
         "sandbox" in placed && placed.sandbox
-          ? " VitaRelay marked this order environment=sandbox — confirm live Eventide practice billing is activated."
+          ? " Eventide marked this order environment=sandbox — confirm live practice billing is activated."
           : "";
+      const providerNote = ` Eventide provider ${prescriber.practiceName || [prescriber.firstName, prescriber.lastName].filter(Boolean).join(" ")} · pharmacy routing by Eventide.`;
       const nextStatus =
         String(placed.status || "").toLowerCase() === "awaiting_payment" ? "awaiting_payment" : "submitted";
       await prisma.order.update({
@@ -369,17 +371,16 @@ export async function openRxcoreOrder(input: {
           rxhereOrderId: placed.orderId,
           rxhereBatchId: placed.batchId || "",
           status: nextStatus,
-          splitMessage: `${payNote}${sandboxNote}`.trim(),
+          splitMessage: `${payNote}${sandboxNote}${providerNote}`.trim(),
           placementError: "",
         },
       });
       await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
       await emitOrderEvent(order.id, "order.received");
-      // emitOrderEvent maps order.received → status "received"; keep Eventide billing state visible.
       if (nextStatus === "awaiting_payment") {
         await prisma.order.update({
           where: { id: order.id },
-          data: { status: "awaiting_payment", splitMessage: `${payNote}${sandboxNote}`.trim() },
+          data: { status: "awaiting_payment", splitMessage: `${payNote}${sandboxNote}${providerNote}`.trim() },
         });
       }
       return placed.orderId;
@@ -389,18 +390,18 @@ export async function openRxcoreOrder(input: {
       where: { id: order.id },
       data: {
         status: "on_hold",
-        placementError: "Missing patient details required to place with VitaRelay.",
-        splitMessage: "Missing patient details required to place with VitaRelay.",
+        placementError: "Missing patient details required to place with Eventide.",
+        splitMessage: "Missing patient details required to place with Eventide.",
       },
     });
     return null;
   }
 
-  // Rx lines without a live VitaRelay key must not look fulfilled in production.
+  // Eventide lines without a live API key must not look fulfilled in production.
   if (rxLines.length && (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production")) {
     if (process.env.ALLOW_SANDBOX_PHARMACY !== "1") {
       const message =
-        "VitaRelay/Eventide API key is not configured in production. Set VITARELAY_API_KEY or EVENTIDE_API_KEY, then retry.";
+        "Eventide/VitaRelay API key is not configured in production. Set EVENTIDE_API_KEY or VITARELAY_API_KEY, then retry.";
       await prisma.order.update({
         where: { id: order.id },
         data: { status: "on_hold", placementError: message, splitMessage: message },
@@ -409,31 +410,30 @@ export async function openRxcoreOrder(input: {
     }
   }
 
-  const rxcoreOrderId = `RXC-${randomBytes(4).toString("hex").toUpperCase()}`;
+  const rxcoreOrderId = `EVT-${randomBytes(4).toString("hex").toUpperCase()}`;
   await prisma.order.update({ where: { id: order.id }, data: { rxcoreOrderId, status: "submitted" } });
-  await audit({ action: "rxcore.order_opened", object: order.id, after: rxcoreOrderId });
+  await audit({ action: "eventide.order_opened_sandbox", object: order.id, after: rxcoreOrderId });
   await emitOrderEvent(order.id, "order.received");
   return rxcoreOrderId;
 }
 
-/** Re-submit an on-hold / missing-VitaRelay order to the Practice API. */
-export async function retryRxHereSubmission(orderId: string) {
+/** Re-submit an on-hold / missing-Eventide order to the Practice API. */
+export async function retryEventideSubmission(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) return { ok: false as const, error: "Order not found." };
   if (order.rxhereOrderId?.trim()) {
     return { ok: true as const, orderId: order.rxhereOrderId, duplicate: true as const };
   }
-  if (!rxhereConfigured()) {
-    return { ok: false as const, error: "VITARELAY_API_KEY / EVENTIDE_API_KEY is not configured." };
+  if (!eventideConfigured()) {
+    return { ok: false as const, error: "EVENTIDE_API_KEY / VITARELAY_API_KEY is not configured." };
   }
 
   let patient = parsePatientJson(order.patientJson);
   if (!patient) patient = await buildPatientFromOrder(order);
   if (!patient?.firstName || !patient?.address?.line1) {
-    return { ok: false as const, error: "Order is missing patient details needed for VitaRelay." };
+    return { ok: false as const, error: "Order is missing patient details needed for Eventide." };
   }
 
-  const prescriber = parsePrescriberJson(order.prescriberJson);
   const products = await prisma.product.findMany({
     where: { sku: { in: order.lines.map((line) => line.sku) } },
     select: { sku: true, rxcoreFormularyId: true },
@@ -456,7 +456,7 @@ export async function retryRxHereSubmission(orderId: string) {
   );
 
   try {
-    const rxhereOrderId = await openRxcoreOrder({
+    const eventideOrderId = await openRxcoreOrder({
       orderId: order.id,
       lines: order.lines
         .filter((line) => isProductClass(line.productClass))
@@ -466,7 +466,6 @@ export async function retryRxHereSubmission(orderId: string) {
         })),
       prescription: {
         patient,
-        prescriber,
         shippingMethod: order.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
         platformProductIdBySku,
       },
@@ -475,9 +474,9 @@ export async function retryRxHereSubmission(orderId: string) {
       where: { id: order.id },
       data: { splitMessage: "", placementError: "", status: "submitted" },
     });
-    return { ok: true as const, orderId: rxhereOrderId, duplicate: false as const };
+    return { ok: true as const, orderId: eventideOrderId, duplicate: false as const };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "VitaRelay resubmit failed.";
+    const message = error instanceof Error ? error.message : "Eventide resubmit failed.";
     await prisma.order.update({
       where: { id: order.id },
       data: { placementError: message, splitMessage: message },
@@ -485,6 +484,9 @@ export async function retryRxHereSubmission(orderId: string) {
     return { ok: false as const, error: message };
   }
 }
+
+/** @deprecated use retryEventideSubmission */
+export const retryRxHereSubmission = retryEventideSubmission;
 
 export async function createExternalOrder(input: { orgId: string; userId: string; sku: string; qty: number; source: string }) {
   const org = await prisma.organization.findUnique({ where: { id: input.orgId } });

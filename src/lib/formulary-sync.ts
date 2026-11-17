@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { probeFormularyCatalog } from "@/lib/rxhere";
+import { probeFormularyCatalog } from "@/lib/eventide";
 import { partnerPriceCentsFromFormulary, WT_FORMULARY_MARKUP } from "@/lib/formulary-pricing";
 
 export { partnerPriceCentsFromFormulary, WT_FORMULARY_MARKUP };
@@ -54,9 +54,8 @@ function buildName(row: FormularyRow) {
 
 function loadLocalFormulary(): FormularyRow[] {
   const candidates = [
-    resolve(process.cwd(), "data/rxhere-formulary.json"),
-    resolve(process.cwd(), "../kianprive/scripts/data/rxhere-formulary.json"),
-    resolve("C:/Users/FindMeAnywhere/Desktop/kianprive/scripts/data/rxhere-formulary.json"),
+    resolve(process.cwd(), "data/eventide-formulary.json"),
+    resolve(process.cwd(), "data/rxhere-formulary.json"), // legacy filename only
   ];
   for (const path of candidates) {
     if (!existsSync(path)) continue;
@@ -123,7 +122,7 @@ export async function loadFormularyRows(): Promise<{ source: "api" | "json"; row
 }
 
 /** Upsert VitaRelay Practice API formulary into the practice catalog. */
-export async function syncRxHereFormulary(actorId = "") {
+export async function syncEventideFormulary(actorId = "") {
   const { source, rows } = await loadFormularyRows();
   if (!rows.length) {
     return { ok: false as const, error: "No formulary rows found from the API or local JSON." };
@@ -252,6 +251,9 @@ export async function syncRxHereFormulary(actorId = "") {
 
   return { ok: true as const, source, upserted, skipped, blockedLegacy, total: rows.length, syncedAt };
 }
+
+/** @deprecated use syncEventideFormulary */
+export const syncRxHereFormulary = syncEventideFormulary;
 
 /** Disable legacy local-formulary SKUs that are not VitaRelay UUIDs (keeps PrescribeUSA). */
 export async function blockLegacyNonEventideProducts() {

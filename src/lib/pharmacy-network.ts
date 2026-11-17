@@ -14,7 +14,7 @@ export type PharmacyPartner = {
 
 export const PHARMACY_NETWORK: PharmacyPartner[] = [
   {
-    id: "eventide-rxhere",
+    id: "eventide-vitarelay",
     name: "Eventide / VitaRelay Network",
     type: "Hybrid",
     region: "National routing",

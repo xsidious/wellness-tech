@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, SectionCard, StatusBadge } from "@/components/portal/Workspace";
-import { syncPrescribeUsaCatalogAction, syncRxHereFormularyAction } from "@/lib/actions";
+import { syncPrescribeUsaCatalogAction, syncEventideFormularyAction } from "@/lib/actions";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
@@ -48,7 +48,7 @@ export default async function AdminProducts({
         lede="Eventide (VitaRelay) + PrescribeUSA catalogs. Sync each vendor separately; categories stay under Eventide · … or PrescribeUSA · …"
         actions={
           <>
-            <form action={syncRxHereFormularyAction}>
+            <form action={syncEventideFormularyAction}>
               <button className="btn btn-accent" type="submit">
                 Sync Eventide catalog
               </button>

@@ -1,6 +1,6 @@
 /**
  * Eventide / VitaRelay Practice API readiness for Hub Control.
- * RxHere is a legacy alias only — live path is Eventide software → VitaRelay Practice API.
+ * Fulfillment uses Eventide physicians + Eventide pharmacy network only.
  */
 import { eventideConfigured, getOrderStatus, listPrescribers } from "@/lib/eventide";
 
@@ -27,12 +27,7 @@ export type EventideReadiness = {
 };
 
 function keyKind(): EventideReadiness["keyKind"] {
-  const key =
-    process.env.EVENTIDE_API_KEY?.trim() ||
-    process.env.VITARELAY_API_KEY?.trim() ||
-    process.env.RXHERE_API_TOKEN?.trim() ||
-    process.env.RXHERE_API_KEY?.trim() ||
-    "";
+  const key = process.env.EVENTIDE_API_KEY?.trim() || process.env.VITARELAY_API_KEY?.trim() || "";
   if (!key) return "missing";
   if (key.startsWith("vr_live_")) return "live";
   if (key.startsWith("vr_test_")) return "test";
@@ -45,19 +40,16 @@ export async function probeEventideReadiness(sampleOrderId?: string): Promise<Ev
   const baseUrl = (
     process.env.EVENTIDE_API_BASE_URL ||
     process.env.VITARELAY_PRACTICE_API_BASE_URL ||
-    process.env.RXHERE_API_BASE_URL ||
     "https://vitarelay.com/api/public/practice/v1"
   ).replace(/\/$/, "");
 
   const hasPlacerUserId = Boolean(
     process.env.EVENTIDE_PLACED_BY_USER_ID?.trim() || process.env.VITARELAY_PLACED_BY_USER_ID?.trim(),
   );
-  const hasPrescriberNpi = Boolean(process.env.EVENTIDE_PRESCRIBER_NPI?.trim());
-  const hasPrescriberLicense = Boolean(process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER?.trim());
+  const envPrescriberNpi = Boolean(process.env.EVENTIDE_PRESCRIBER_NPI?.trim());
+  const envPrescriberLicense = Boolean(process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER?.trim());
   const webhookSecretSet = Boolean(
-    process.env.EVENTIDE_WEBHOOK_SECRET?.trim() ||
-      process.env.VITARELAY_WEBHOOK_SECRET?.trim() ||
-      process.env.RXHERE_WEBHOOK_SECRET?.trim(),
+    process.env.EVENTIDE_WEBHOOK_SECRET?.trim() || process.env.VITARELAY_WEBHOOK_SECRET?.trim(),
   );
   const kianCallbackUrl = `${(process.env.KIAN_APP_URL || "https://www.kianprive.com").replace(/\/$/, "")}/api/webhooks/wellness-tech-order`;
 
@@ -71,30 +63,37 @@ export async function probeEventideReadiness(sampleOrderId?: string): Promise<Ev
   if (!hasPlacerUserId) {
     blockers.push("EVENTIDE_PLACED_BY_USER_ID missing — Practice API may reject placements (placed_by_user_id).");
   }
-  if (!hasPrescriberNpi || !hasPrescriberLicense) {
-    blockers.push("Default Eventide prescriber NPI / license env vars incomplete.");
-  }
   if (!webhookSecretSet) {
     blockers.push("Webhook signing secret missing — Eventide status updates cannot be verified.");
   }
 
   let samplePrescriber: string | null = null;
+  let rosterHasPrescriber = false;
   if (configured) {
     try {
       const roster = await listPrescribers();
       if (roster.ok) {
         const rows = Array.isArray((roster.data as { data?: unknown })?.data)
-          ? ((roster.data as { data: Array<{ full_name?: string; npi_number?: string }> }).data)
+          ? ((roster.data as { data: Array<{ full_name?: string; npi_number?: string; license_number?: string }> }).data)
           : [];
         const first = rows[0];
         samplePrescriber = first
           ? `${first.full_name || "Prescriber"} · NPI ${first.npi_number || "—"}`
           : null;
+        rosterHasPrescriber = rows.some((r) => r.npi_number && r.license_number);
         if (!rows.length) blockers.push("Prescriber roster is empty on Eventide/VitaRelay.");
       }
     } catch {
       blockers.push("Could not read Eventide prescriber roster.");
     }
+  }
+
+  const hasPrescriberNpi = rosterHasPrescriber || envPrescriberNpi;
+  const hasPrescriberLicense = rosterHasPrescriber || envPrescriberLicense;
+  if (!hasPrescriberNpi || !hasPrescriberLicense) {
+    blockers.push(
+      "No Eventide roster physician with NPI/license (and no EVENTIDE_PRESCRIBER_* env fallback).",
+    );
   }
 
   let sampleOrder: EventideReadiness["sampleOrder"] = null;

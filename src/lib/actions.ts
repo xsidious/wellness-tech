@@ -942,16 +942,19 @@ export async function approveRefill(formData: FormData) {
   redirect("/portal/refills");
 }
 
-export async function syncRxHereFormularyAction() {
+export async function syncEventideFormularyAction() {
   const userId = await readUserId();
   if (!userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !rolesOf(user.roles).includes("admin")) redirect("/login");
-  const { syncRxHereFormulary } = await import("@/lib/formulary-sync");
-  const result = await syncRxHereFormulary(user.id);
+  const { syncEventideFormulary } = await import("@/lib/formulary-sync");
+  const result = await syncEventideFormulary(user.id);
   if (!result.ok) redirect(`/admin/products?error=${encodeURIComponent(result.error)}`);
   redirect(`/admin/products?synced=${result.upserted}&source=${result.source}&vendor=eventide`);
 }
+
+/** @deprecated use syncEventideFormularyAction */
+export const syncRxHereFormularyAction = syncEventideFormularyAction;
 
 export async function syncPrescribeUsaCatalogAction() {
   const userId = await readUserId();
@@ -1203,8 +1206,8 @@ export async function retryEventideOrderAction(formData: FormData) {
   });
   const base = isAdmin ? `/admin/orders/${orderId}` : `/portal/orders/${orderId}`;
   if (!order) redirect(isAdmin ? "/admin/orders" : "/portal/orders");
-  const { retryRxHereSubmission } = await import("@/lib/rxcore");
-  const result = await retryRxHereSubmission(order.id);
+  const { retryEventideSubmission } = await import("@/lib/rxcore");
+  const result = await retryEventideSubmission(order.id);
   if (!result.ok) redirect(`${base}?error=${encodeURIComponent(result.error)}`);
   redirect(`${base}?retried=1`);
 }

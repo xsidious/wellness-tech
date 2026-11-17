@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { partnerSecretOk } from "@/lib/partner-org";
-import { retryRxHereSubmission } from "@/lib/rxcore";
+import { retryEventideSubmission } from "@/lib/rxcore";
 
 /**
  * POST /api/partner/orders/retry
  * Body: { orderId?: string, externalRef?: string }
- * Re-submits a KIAN-forwarded order to RxHere when the first pharmacy call failed (e.g. 502).
+ * Re-submits a KIAN-forwarded order to Eventide/VitaRelay when the first pharmacy call failed.
  */
 export async function POST(request: Request) {
   if (!partnerSecretOk(request.headers.get("x-wt-partner-secret"))) {
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Order not found." }, { status: 404 });
   }
 
-  const result = await retryRxHereSubmission(order.id);
+  const result = await retryEventideSubmission(order.id);
   if (!result.ok) {
     return NextResponse.json(
       {
@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     ok: true,
     orderId: order.id,
     invoiceNumber: order.invoiceNumber,
+    eventideOrderId: result.orderId,
     rxhereOrderId: result.orderId,
     duplicate: result.duplicate,
     status: refreshed?.status || "submitted",

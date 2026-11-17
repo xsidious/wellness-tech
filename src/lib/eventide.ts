@@ -35,6 +35,8 @@ export type EventidePrescriber = {
   licenseNumber?: string;
   /** Required by VitaRelay when any line is a controlled substance. */
   deaNumber?: string;
+  /** VitaRelay roster id when resolved from Eventide `/prescribers`. */
+  eventidePrescriberId?: string;
 };
 
 export type EventideItem = {
@@ -114,22 +116,16 @@ export function pharmacyPaymentMessage(status: string | null | undefined, paymen
 }
 
 function baseUrl() {
+  // Eventide / VitaRelay Practice API only — RxHere is not used.
   return (
     process.env.EVENTIDE_API_BASE_URL ||
     process.env.VITARELAY_PRACTICE_API_BASE_URL ||
-    process.env.RXHERE_API_BASE_URL ||
     "https://vitarelay.com/api/public/practice/v1"
   ).replace(/\/$/, "");
 }
 
 function apiToken() {
-  return (
-    process.env.EVENTIDE_API_KEY?.trim() ||
-    process.env.VITARELAY_API_KEY?.trim() ||
-    process.env.RXHERE_API_TOKEN?.trim() ||
-    process.env.RXHERE_API_KEY?.trim() ||
-    ""
-  );
+  return process.env.EVENTIDE_API_KEY?.trim() || process.env.VITARELAY_API_KEY?.trim() || "";
 }
 
 export function eventideConfigured() {
@@ -151,10 +147,7 @@ export function absoluteEventideAsset(pathOrUrl?: string | null) {
   if (raw.includes("serum-bottle") || raw.endsWith("/serum-bottle.png")) return EVENTIDE_CDN.serum;
   if (raw.includes("lyophilized-powder") || raw.endsWith("/lyophilized-powder.png")) return EVENTIDE_CDN.powder;
   if (/^https?:\/\//i.test(raw)) return raw;
-  const host = (process.env.RXHERE_ASSET_BASE_URL || process.env.VITARELAY_ASSET_BASE_URL || "https://vitarelay.com").replace(
-    /\/$/,
-    "",
-  );
+  const host = (process.env.VITARELAY_ASSET_BASE_URL || "https://vitarelay.com").replace(/\/$/, "");
   return `${host}${raw.startsWith("/") ? "" : "/"}${raw}`;
 }
 
@@ -425,6 +418,109 @@ export async function getPrescriberRoute(params: { state?: string; patientId?: s
   return eventideFetch(`/prescriber-route?${q.toString()}`);
 }
 
+/**
+ * Resolve the Eventide/VitaRelay roster physician that should fulfill an order.
+ * Pharmacy routing stays on Eventide; WT never invents a third-party RxHere provider.
+ */
+export async function resolveEventideFulfillmentPrescriber(input?: {
+  state?: string | null;
+  patientId?: string | null;
+}): Promise<{
+  ok: true;
+  prescriber: EventidePrescriber & { eventidePrescriberId?: string };
+  route?: string;
+  reason?: string;
+} | { ok: false; error: string }> {
+  if (!eventideConfigured()) {
+    return { ok: false, error: "EVENTIDE_API_KEY / VITARELAY_API_KEY is not configured." };
+  }
+
+  const state = String(input?.state || "")
+    .trim()
+    .toUpperCase()
+    .slice(0, 2);
+
+  const [routeResult, rosterResult] = await Promise.all([
+    state || input?.patientId
+      ? getPrescriberRoute({ state: state || undefined, patientId: input?.patientId || undefined })
+      : Promise.resolve({ ok: false as const, status: 0, data: {} }),
+    listPrescribers(),
+  ]);
+
+  const rosterRows = Array.isArray((rosterResult.data as { data?: unknown[] })?.data)
+    ? ((rosterResult.data as { data: VitaRelayPrescriberRoster[] }).data)
+    : Array.isArray(rosterResult.data)
+      ? (rosterResult.data as VitaRelayPrescriberRoster[])
+      : [];
+
+  const routeData =
+    routeResult.ok && typeof routeResult.data === "object" && routeResult.data
+      ? ((routeResult.data as { data?: Record<string, unknown> }).data || (routeResult.data as Record<string, unknown>))
+      : null;
+
+  const assignedId = String(
+    routeData?.assigned_prescriber_id ||
+      (routeData?.prescriber && typeof routeData.prescriber === "object"
+        ? (routeData.prescriber as { id?: string }).id
+        : "") ||
+      "",
+  ).trim();
+
+  let picked =
+    (assignedId ? rosterRows.find((row) => row.id === assignedId) : undefined) ||
+    rosterRows.find((row) => row.npi_verified && row.npi_number) ||
+    rosterRows.find((row) => row.npi_number) ||
+    null;
+
+  // Env fallback only when Eventide roster is empty (misconfigured practice key).
+  if (!picked) {
+    const envNpi = (process.env.EVENTIDE_PRESCRIBER_NPI || process.env.VITARELAY_PRESCRIBER_NPI || "").replace(/\D/g, "");
+    const envLicense = process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER?.trim() || "";
+    const envState = process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE?.trim() || state || "";
+    const envName = process.env.EVENTIDE_PRESCRIBER_NAME?.trim() || "";
+    if (/^\d{10}$/.test(envNpi) && envLicense && envState) {
+      return {
+        ok: true,
+        route: String(routeData?.route || "env_fallback"),
+        reason: String(routeData?.reason || "eventide_roster_empty"),
+        prescriber: {
+          npiNumber: envNpi,
+          licenseNumber: envLicense,
+          licenseState: envState,
+          firstName: envName.split(/\s+/)[0] || "Licensed",
+          lastName: envName.split(/\s+/).slice(1).join(" ") || "Prescriber",
+          practiceName: envName || "Eventide",
+          deaNumber: process.env.EVENTIDE_PRESCRIBER_DEA?.trim() || process.env.VITARELAY_PRESCRIBER_DEA?.trim() || undefined,
+        },
+      };
+    }
+    return {
+      ok: false,
+      error:
+        "No Eventide/VitaRelay practice physicians on the roster. Add a provider in Eventide (or set EVENTIDE_PRESCRIBER_NPI + license env), then retry.",
+    };
+  }
+
+  const nameParts = String(picked.full_name || "Eventide Prescriber")
+    .trim()
+    .split(/\s+/);
+  return {
+    ok: true,
+    route: String(routeData?.route || "roster"),
+    reason: String(routeData?.reason || "eventide_roster"),
+    prescriber: {
+      eventidePrescriberId: picked.id,
+      npiNumber: String(picked.npi_number || "").replace(/\D/g, ""),
+      licenseState: String(picked.license_state || state || "").toUpperCase().slice(0, 2),
+      licenseNumber: String(picked.license_number || ""),
+      firstName: nameParts[0] || "Licensed",
+      lastName: nameParts.slice(1).join(" ") || "Prescriber",
+      practiceName: picked.full_name || "Eventide",
+      deaNumber: process.env.EVENTIDE_PRESCRIBER_DEA?.trim() || process.env.VITARELAY_PRESCRIBER_DEA?.trim() || undefined,
+    },
+  };
+}
+
 function allowSandboxPharmacy() {
   // Never invent EVT-* IDs in production — clinics would treat them as live.
   if (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production") {
@@ -568,6 +664,9 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
       country: (input.patient.address.country || "US").slice(0, 2).toUpperCase(),
     },
     prescriber: {
+      ...(input.prescriber?.eventidePrescriberId
+        ? { id: input.prescriber.eventidePrescriberId }
+        : {}),
       full_name: fullName,
       npi_number: npi,
       licenses: [{ state: licenseState, number: licenseNumber }],
@@ -859,10 +958,11 @@ function hmacBase64(secret: string | Buffer, payload: string) {
   return createHmac("sha256", secret).update(payload, "utf8").digest("base64");
 }
 
-export function verifyRxHereWebhookSecret(request: Request, rawBody?: string) {
+export function verifyEventideWebhookSecret(request: Request, rawBody?: string) {
   const expected =
     process.env.EVENTIDE_WEBHOOK_SECRET?.trim() ||
     process.env.VITARELAY_WEBHOOK_SECRET?.trim() ||
+    // Legacy alias only — RxHere is not an active partner.
     process.env.RXHERE_WEBHOOK_SECRET?.trim();
   if (!expected) return false;
 
@@ -1090,8 +1190,11 @@ export async function simulateEventideOrder(remoteOrderId: string, event?: strin
   });
 }
 
-export async function ingestRxHereWebhook(body: string, request: Request) {
-  if (!verifyRxHereWebhookSecret(request, body)) {
+/** @deprecated use verifyEventideWebhookSecret */
+export const verifyRxHereWebhookSecret = verifyEventideWebhookSecret;
+
+export async function ingestEventideWebhook(body: string, request: Request) {
+  if (!verifyEventideWebhookSecret(request, body)) {
     return { ok: false as const, status: 401, error: "Invalid webhook secret." };
   }
   const payload = JSON.parse(body) as {
@@ -1246,3 +1349,6 @@ export async function ingestRxHereWebhook(body: string, request: Request) {
 
   return { ok: true as const, duplicate: false, status };
 }
+
+/** @deprecated use ingestEventideWebhook */
+export const ingestRxHereWebhook = ingestEventideWebhook;

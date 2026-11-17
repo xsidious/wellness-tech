@@ -149,7 +149,7 @@ export default async function HubControlPage({
 
       <SectionCard
         title="Eventide / VitaRelay connection"
-        description="We place through Eventide software (VitaRelay Practice API). RxHere is only a legacy alias — not a separate pharmacy path."
+        description="We place through Eventide software (VitaRelay Practice API) using Eventide’s physicians and pharmacy network."
       >
         <div className="ws-stat-grid">
           <StatTile

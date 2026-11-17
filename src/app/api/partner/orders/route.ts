@@ -4,7 +4,12 @@ import { audit } from "@/lib/audit";
 import { isProductClass, routeSource, shippingCents } from "@/lib/rules";
 import { ensurePartnerOrgForSite, normalizePartnerSite, partnerSecretOk } from "@/lib/partner-org";
 import { openRxcoreOrder } from "@/lib/rxcore";
-import { packPatient, type RxHereAddress, type RxHerePatient, type RxHerePrescriber } from "@/lib/rxhere";
+import {
+  packPatient,
+  type EventideAddress,
+  type EventidePatient,
+  type EventidePrescriber,
+} from "@/lib/eventide";
 import type { ClinicalChartPackage } from "@/lib/clinical-chart";
 
 type PartnerLine = {
@@ -44,9 +49,10 @@ type PartnerBody = {
     phone?: string;
     email?: string;
     allergies?: string;
-    address?: RxHereAddress;
+    address?: EventideAddress;
   };
-  prescriber?: RxHerePrescriber;
+  /** Optional; Eventide roster physicians are preferred at placement time. */
+  prescriber?: EventidePrescriber;
 };
 
 function splitName(full?: string) {
@@ -87,8 +93,8 @@ export async function POST(request: Request) {
   if (existing) {
     // Already created — if pharmacy never accepted, resubmit to Eventide instead of no-oping.
     if (!existing.rxhereOrderId?.trim()) {
-      const { retryRxHereSubmission } = await import("@/lib/rxcore");
-      const retried = await retryRxHereSubmission(existing.id);
+      const { retryEventideSubmission } = await import("@/lib/rxcore");
+      const retried = await retryEventideSubmission(existing.id);
       if (!retried.ok) {
         return NextResponse.json(
           {
@@ -149,7 +155,7 @@ export async function POST(request: Request) {
         ? `${body.patient.firstName} ${body.patient.lastName}`
         : undefined),
   );
-  const address: RxHereAddress = body.patient?.address || {
+  const address: EventideAddress = body.patient?.address || {
     line1: String(ship.street1 || "").trim() || "Address on file",
     line2: ship.street2 ? String(ship.street2).trim() : undefined,
     city: String(ship.city || "").trim() || "Unknown",
@@ -158,7 +164,7 @@ export async function POST(request: Request) {
     country: "US",
   };
 
-  const patient: RxHerePatient = {
+  const patient: EventidePatient = {
     firstName: String(body.patient?.firstName || named.firstName).trim(),
     lastName: String(body.patient?.lastName || named.lastName).trim(),
     dateOfBirth: String(body.patient?.dateOfBirth || "1990-01-01").trim(),
