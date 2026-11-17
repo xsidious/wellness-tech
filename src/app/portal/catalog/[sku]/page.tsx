@@ -32,6 +32,7 @@ export default async function ProductDetail({ params }: { params: Promise<{ sku:
         className="dash-photo"
         src={product.imageUrl || photoForClass(product.productClass, product.category)}
         alt=""
+        referrerPolicy="no-referrer"
         style={{ borderRadius: 18, marginTop: 12 }}
       />
       <p className="kicker">{product.category || product.productClass}</p>

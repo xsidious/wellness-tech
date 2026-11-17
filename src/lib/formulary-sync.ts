@@ -246,7 +246,8 @@ export async function syncPrescribeUsaCatalog(actorId = "") {
   const { prescribeUsaPensCatalog } = await import("@/lib/prescribeusa-pens-catalog");
   const syncedAt = new Date();
   let upserted = 0;
-  const penImage = "/vendor/eventide/injection-pen.png";
+  const penImage =
+    "https://vitarelay.com/__l5e/assets-v1/7a5eff76-3f46-4d87-8a50-de34ef7f27ff/injection-pen.png";
 
   for (const line of prescribeUsaPensCatalog) {
     const category = line.category.startsWith("PrescribeUSA")

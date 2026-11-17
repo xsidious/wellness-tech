@@ -238,6 +238,8 @@ export default async function CatalogPage({
                   <img
                     src={product.imageUrl || photoForClass(product.productClass, product.category)}
                     alt=""
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                   <div className="mk-card-badges">
                     <span className="mk-badge">{vendorName}</span>

@@ -136,14 +136,20 @@ export function eventideConfigured() {
   return Boolean(apiToken());
 }
 
-/** Resolve Eventide/VitaRelay CDN asset paths — prefer locally mirrored vendor photos. */
+const EVENTIDE_CDN = {
+  powder:
+    "https://vitarelay.com/__l5e/assets-v1/0cffe580-da37-48f8-b0d1-5a07027e056b/lyophilized-powder.png",
+  pen: "https://vitarelay.com/__l5e/assets-v1/7a5eff76-3f46-4d87-8a50-de34ef7f27ff/injection-pen.png",
+  serum: "https://vitarelay.com/__l5e/assets-v1/93425fa8-8402-43ab-ba6b-edf2329a9d39/serum-bottle.png",
+} as const;
+
+/** Resolve Eventide/VitaRelay CDN asset paths to absolute https URLs (live CDN). */
 export function absoluteEventideAsset(pathOrUrl?: string | null) {
   const raw = String(pathOrUrl || "").trim();
   if (!raw) return "";
-  if (raw.includes("injection-pen")) return "/vendor/eventide/injection-pen.png";
-  if (raw.includes("serum-bottle")) return "/vendor/eventide/serum-bottle.png";
-  if (raw.includes("lyophilized-powder")) return "/vendor/eventide/lyophilized-powder.png";
-  if (raw.startsWith("/vendor/")) return raw;
+  if (raw.includes("injection-pen") || raw.endsWith("/injection-pen.png")) return EVENTIDE_CDN.pen;
+  if (raw.includes("serum-bottle") || raw.endsWith("/serum-bottle.png")) return EVENTIDE_CDN.serum;
+  if (raw.includes("lyophilized-powder") || raw.endsWith("/lyophilized-powder.png")) return EVENTIDE_CDN.powder;
   if (/^https?:\/\//i.test(raw)) return raw;
   const host = (process.env.RXHERE_ASSET_BASE_URL || process.env.VITARELAY_ASSET_BASE_URL || "https://vitarelay.com").replace(
     /\/$/,
@@ -152,12 +158,12 @@ export function absoluteEventideAsset(pathOrUrl?: string | null) {
   return `${host}${raw.startsWith("/") ? "" : "/"}${raw}`;
 }
 
-/** Pick a mirrored Eventide product photo from form / name when API has no image_urls. */
+/** Eventide CDN product photo when API has no image_urls. */
 export function eventideFallbackImage(input: { name?: string; form?: string; category?: string }) {
   const blob = `${input.name || ""} ${input.form || ""} ${input.category || ""}`.toLowerCase();
-  if (/prescribeusa|pre-filled|\bpen\b/.test(blob)) return "/vendor/eventide/injection-pen.png";
-  if (/serum|topical|cream|gel|lotion|drop/.test(blob)) return "/vendor/eventide/serum-bottle.png";
-  return "/vendor/eventide/lyophilized-powder.png";
+  if (/prescribeusa|pre-filled|\bpen\b/.test(blob)) return EVENTIDE_CDN.pen;
+  if (/serum|topical|cream|gel|lotion|drop|supply|syringe/.test(blob)) return EVENTIDE_CDN.serum;
+  return EVENTIDE_CDN.powder;
 }
 
 /** @deprecated */
