@@ -244,10 +244,9 @@ export async function syncRxHereFormulary(actorId = "") {
 /** Upsert PrescribeUSA pen catalog into practice products (separate from Eventide). */
 export async function syncPrescribeUsaCatalog(actorId = "") {
   const { prescribeUsaPensCatalog } = await import("@/lib/prescribeusa-pens-catalog");
-  const { photos } = await import("@/lib/photos");
   const syncedAt = new Date();
   let upserted = 0;
-  const penImage = photos.peptides;
+  const penImage = "/vendor/eventide/injection-pen.png";
 
   for (const line of prescribeUsaPensCatalog) {
     const category = line.category.startsWith("PrescribeUSA")

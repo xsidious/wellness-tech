@@ -136,16 +136,28 @@ export function eventideConfigured() {
   return Boolean(apiToken());
 }
 
-/** Resolve Eventide/VitaRelay CDN asset paths to absolute URLs. */
+/** Resolve Eventide/VitaRelay CDN asset paths — prefer locally mirrored vendor photos. */
 export function absoluteEventideAsset(pathOrUrl?: string | null) {
   const raw = String(pathOrUrl || "").trim();
   if (!raw) return "";
+  if (raw.includes("injection-pen")) return "/vendor/eventide/injection-pen.png";
+  if (raw.includes("serum-bottle")) return "/vendor/eventide/serum-bottle.png";
+  if (raw.includes("lyophilized-powder")) return "/vendor/eventide/lyophilized-powder.png";
+  if (raw.startsWith("/vendor/")) return raw;
   if (/^https?:\/\//i.test(raw)) return raw;
   const host = (process.env.RXHERE_ASSET_BASE_URL || process.env.VITARELAY_ASSET_BASE_URL || "https://vitarelay.com").replace(
     /\/$/,
     "",
   );
   return `${host}${raw.startsWith("/") ? "" : "/"}${raw}`;
+}
+
+/** Pick a mirrored Eventide product photo from form / name when API has no image_urls. */
+export function eventideFallbackImage(input: { name?: string; form?: string; category?: string }) {
+  const blob = `${input.name || ""} ${input.form || ""} ${input.category || ""}`.toLowerCase();
+  if (/prescribeusa|pre-filled|\bpen\b/.test(blob)) return "/vendor/eventide/injection-pen.png";
+  if (/serum|topical|cream|gel|lotion|drop/.test(blob)) return "/vendor/eventide/serum-bottle.png";
+  return "/vendor/eventide/lyophilized-powder.png";
 }
 
 /** @deprecated */
@@ -788,7 +800,10 @@ export async function probeFormularyCatalog(): Promise<
           item.requires_prescription != null
             ? Boolean(item.requires_prescription)
             : type === "503a" || type === "503b",
-        imageUrl: practiceImage || imageMap.get(id) || "",
+        imageUrl:
+          practiceImage ||
+          imageMap.get(id) ||
+          eventideFallbackImage({ name, form: item.dosage_form ? String(item.dosage_form) : "", category: item.category_label ? String(item.category_label) : "" }),
       });
     }
     if (rows.length < 100) break;
