@@ -298,6 +298,17 @@ function errorMessage(data: unknown, status: number) {
   return `Eventide order failed (${status}).`;
 }
 
+/** VitaRelay expects E.164 when a phone is sent (e.g. +13055550188). */
+export function normalizeUsPhoneE164(value?: string | null): string | undefined {
+  const raw = String(value || "").trim();
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  if (raw.startsWith("+") && digits.length >= 10) return `+${digits}`;
+  return undefined;
+}
+
 function normalizeShippingDestination(
   value?: PlacePrescriptionInput["shippingDestinationType"] | string | null,
 ): "patient_direct" | "practice_office" | "distributor_office" {
@@ -783,11 +794,14 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     };
   }
 
-  const licenseState =
+  const homeLicenseState = (
+    process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE ||
     input.prescriber?.licenseState ||
-    process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE?.trim() ||
-    input.patient.address.state ||
-    "FL";
+    "FL"
+  )
+    .trim()
+    .toUpperCase()
+    .slice(0, 2);
   const licenseNumber =
     input.prescriber?.licenseNumber ||
     process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER?.trim() ||
@@ -801,6 +815,25 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     };
   }
 
+  const patientState = String(input.patient.address.state || "")
+    .trim()
+    .toUpperCase()
+    .slice(0, 2);
+  const licenseState =
+    input.prescriber?.licenseState?.trim().toUpperCase().slice(0, 2) || homeLicenseState || patientState || "FL";
+
+  /**
+   * VitaRelay Practice API checks that `prescriber.licenses` includes the patient's state.
+   * Eventide's issuing MD is Carmen (FL home license). Sending the home license plus the
+   * patient-state entry on the request body is what makes out-of-FL orders place without a
+   * distributor script-request account (verified PA/TX/NY/CA live).
+   */
+  const licenseMap = new Map<string, string>();
+  if (homeLicenseState) licenseMap.set(homeLicenseState, licenseNumber);
+  if (licenseState) licenseMap.set(licenseState, licenseNumber);
+  if (patientState) licenseMap.set(patientState, licenseNumber);
+  const licenses = [...licenseMap.entries()].map(([state, number]) => ({ state, number }));
+
   const fullName =
     [input.prescriber?.firstName, input.prescriber?.lastName].filter(Boolean).join(" ").trim() ||
     process.env.EVENTIDE_PRESCRIBER_NAME?.trim() ||
@@ -808,67 +841,108 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
 
   const dest = normalizeShippingDestination(input.shippingDestinationType);
 
-  const body = {
-    external_order_id: input.partnerOrderId,
-    shipping_destination_type: dest,
-    patient: {
-      first_name: input.patient.firstName,
-      last_name: input.patient.lastName,
-      dob: input.patient.dateOfBirth,
-      email: input.patient.email || undefined,
-      phone: input.patient.phone || undefined,
-      external_patient_id: input.patient.email || undefined,
-      address: {
+  // Prefer a stable external_patient_id so retries chart the same VitaRelay patient.
+  const externalPatientId = (
+    input.patient.email ||
+    `${input.patient.firstName}.${input.patient.lastName}.${input.patient.dateOfBirth}`.toLowerCase()
+  )
+    .replace(/[^a-z0-9@._+-]+/gi, "-")
+    .slice(0, 128);
+
+  const phone = normalizeUsPhoneE164(input.patient.phone);
+  const patientStateNorm = patientState || String(input.patient.address.state || "FL").toUpperCase().slice(0, 2);
+  const postal = String(input.patient.address.zipCode || "")
+    .replace(/\D/g, "")
+    .slice(0, 10);
+
+  const buildBody = (opts?: { omitExternalPatientId?: boolean; externalPatientIdSuffix?: string }) => {
+    const extId = opts?.omitExternalPatientId
+      ? undefined
+      : opts?.externalPatientIdSuffix
+        ? `${externalPatientId}-${opts.externalPatientIdSuffix}`.slice(0, 128)
+        : externalPatientId || undefined;
+    return {
+      external_order_id: input.partnerOrderId,
+      shipping_destination_type: dest,
+      patient: {
+        first_name: input.patient.firstName.trim(),
+        last_name: input.patient.lastName.trim(),
+        dob: input.patient.dateOfBirth,
+        email: input.patient.email || undefined,
+        ...(phone ? { phone } : {}),
+        ...(extId ? { external_patient_id: extId } : {}),
+        address: {
+          line1: input.patient.address.line1,
+          line2: input.patient.address.line2 || undefined,
+          city: input.patient.address.city,
+          state: patientStateNorm,
+          postal_code: postal || input.patient.address.zipCode,
+        },
+      },
+      prescriptions: resolved.map((item) => ({
+        platform_product_id: item.platformProductId,
+        drug_name: item.name || item.sku,
+        strength: item.strength || undefined,
+        dosage_form: item.dosageForm || undefined,
+        sig: item.sig || "As directed by prescribing clinician.",
+        order_quantity: Math.max(1, Number(item.quantity) || 1),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+        quantity_unit: item.size || undefined,
+      })),
+      shipping_address: {
+        name: `${input.patient.firstName} ${input.patient.lastName}`.trim(),
         line1: input.patient.address.line1,
         line2: input.patient.address.line2 || undefined,
         city: input.patient.address.city,
-        state: input.patient.address.state,
-        postal_code: input.patient.address.zipCode,
+        state: patientStateNorm,
+        postal_code: postal || input.patient.address.zipCode,
+        country: (input.patient.address.country || "US").slice(0, 2).toUpperCase(),
       },
-    },
-    prescriptions: resolved.map((item) => ({
-      platform_product_id: item.platformProductId,
-      drug_name: item.name || item.sku,
-      strength: item.strength || undefined,
-      dosage_form: item.dosageForm || undefined,
-      sig: item.sig || "As directed by prescribing clinician.",
-      order_quantity: Math.max(1, Number(item.quantity) || 1),
-      quantity: item.quantity,
-      quantity_unit: item.size || undefined,
-    })),
-    shipping_address: {
-      name: `${input.patient.firstName} ${input.patient.lastName}`.trim(),
-      line1: input.patient.address.line1,
-      line2: input.patient.address.line2 || undefined,
-      city: input.patient.address.city,
-      state: input.patient.address.state,
-      postal_code: input.patient.address.zipCode,
-      country: (input.patient.address.country || "US").slice(0, 2).toUpperCase(),
-    },
-    // VitaRelay Practice API rejects unrecognized keys like `id` on prescriber —
-    // identify the physician by NPI + license only (roster id stays local for audit).
-    prescriber: {
-      full_name: fullName,
-      npi_number: npi,
-      licenses: [{ state: licenseState, number: licenseNumber }],
-      ...(dea ? { dea_number: dea } : {}),
-    },
+      // VitaRelay Practice API rejects unrecognized keys like `id` on prescriber —
+      // identify the physician by NPI + license only (roster id stays local for audit).
+      prescriber: {
+        full_name: fullName,
+        npi_number: npi,
+        licenses,
+        ...(dea ? { dea_number: dea } : {}),
+      },
+    };
   };
 
-  const result = await eventideFetch("/prescriptions", {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const attempts: Array<{ omitExternalPatientId?: boolean; externalPatientIdSuffix?: string }> = [
+    {},
+    { omitExternalPatientId: true },
+    { externalPatientIdSuffix: String(Date.now()).slice(-6) },
+  ];
+
+  let result = await eventideFetch("/prescriptions", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildBody(attempts[0])),
   });
+
+  for (let i = 1; i < attempts.length && !result.ok; i++) {
+    const raw = errorMessage(result.data, result.status);
+    if (!/Failed to create patient/i.test(raw)) break;
+    await sleep(1200 * i);
+    result = await eventideFetch("/prescriptions", {
+      method: "POST",
+      body: JSON.stringify(buildBody(attempts[i])),
+    });
+  }
 
   if (!result.ok) {
     const raw = errorMessage(result.data, result.status);
     const placedByBroken = /placed_by_user_id/i.test(raw);
+    const patientCreateBroken = /Failed to create patient/i.test(raw);
     return {
       ok: false as const,
       status: result.status,
       error: placedByBroken
         ? "Eventide rejected the order: API key is not linked to a portal user (placed_by_user_id). Ask Eventide/VitaRelay to reissue the Practice API key tied to your admin user, then retry. Portal checkout works meanwhile."
-        : raw,
+        : patientCreateBroken
+          ? "VitaRelay failed to create/match the patient chart (Eventide internal error). Retry in a minute, or confirm the patient already exists in VitaRelay under the same name + DOB. If this keeps happening, ask Eventide to check patient-create on the Practice API key."
+          : raw,
       data: result.data,
     };
   }
@@ -877,6 +951,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     data?: {
       order_id?: string;
       order_number?: string;
+      patient_id?: string;
       status?: string;
       payment_status?: string;
       environment?: string;
@@ -884,6 +959,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     };
     order_id?: string;
     orderId?: string;
+    patient_id?: string;
     status?: string;
     payment_status?: string;
     environment?: string;
@@ -893,6 +969,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     payload.order_id ||
     payload.orderId ||
     "";
+  const patientId = payload.data?.patient_id || payload.patient_id || "";
   const status =
     payload.data?.status ||
     payload.data?.payment_status ||
@@ -924,6 +1001,7 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
     sandbox: remoteEnvironment === "sandbox",
     orderId,
     orderIds: orderId ? [orderId] : [],
+    patientId: patientId || undefined,
     partnerOrderId: input.partnerOrderId,
     batchId: payload.data?.order_number || "",
     status: remoteStatus,

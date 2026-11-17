@@ -10,7 +10,7 @@ import { clearLogin, readPending, readUserId, setLogin, setPending } from "@/lib
 import { canOrder, fulfillmentGroups, isProductClass, requiresEscript, shippingCents } from "@/lib/rules";
 import { ensurePharmacyNetwork } from "@/lib/ensure-pharmacies";
 import { createExternalOrder, emitOrderEvent, ensurePatient, nextEvent, openRxcoreOrder } from "@/lib/rxcore";
-import { packPatient, type EventidePatient } from "@/lib/eventide";
+import { normalizeUsPhoneE164, packPatient, type EventidePatient } from "@/lib/eventide";
 import { rolesOf } from "@/lib/guard";
 import { honeypotTripped, verifyTurnstile } from "@/lib/anti-bot";
 import { sendMagicLoginCode } from "@/lib/email";
@@ -721,7 +721,7 @@ export async function placeOrder(formData: FormData) {
       lastName: lastName || user.name.split(/\s+/).slice(1).join(" ") || "Unknown",
       dateOfBirth: patientDob || "1990-01-01",
       gender: patientGender || undefined,
-      phone: patientPhone || undefined,
+      phone: normalizeUsPhoneE164(patientPhone) || patientPhone || undefined,
       email: patientEmail || user.email,
       allergies: patientAllergies,
       address: {

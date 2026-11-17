@@ -328,6 +328,9 @@ export async function openRxcoreOrder(input: {
           kind: "tele_clinic" as const,
         } satisfies EventideReferringProvider);
 
+      let prescriber = plan.mode === "own" ? plan.prescriber : undefined;
+      let placementMode: "own" | "network" | "own_multistate" = plan.mode === "own" ? "own" : "network";
+
       if (plan.mode === "network") {
         const requested = await requestEventideNetworkScript({
           partnerOrderId: order.partnerExternalRef || order.invoiceNumber,
@@ -340,21 +343,49 @@ export async function openRxcoreOrder(input: {
             "Please issue under Eventide network prescriber; pharmacy fulfillment by Eventide.",
           ].join("\n"),
         });
-        if (!requested.ok) {
-          const ownInState = await resolveEventideIssuePlan({ state: prescription.patient.address.state });
-          const detail =
-            requested.error +
-            (ownInState.ok && ownInState.mode === "own"
-              ? ""
-              : ` Eventide has no own licensed MD for ${prescription.patient.address.state || "this state"} — ship/patient state must match an Eventide roster license (currently FL) until distributor script-requests are enabled.`);
+        if (requested.ok) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: "awaiting_prescription",
+              escriptStatus: "pending_eventide_network",
+              pharmacyId: eventidePharmacy?.id || undefined,
+              rxcoreOrderId: requested.requestId,
+              rxhereOrderId: requested.requestId,
+              placementError: "",
+              splitMessage: `Waiting for Eventide doctor network to issue/sign the prescription (script request ${requested.requestId || "pending"}). Pharmacy fills after they sign.`,
+              prescriberJson: JSON.stringify({
+                mode: "network",
+                eventideRoute: plan.route,
+                eventideReason: plan.reason,
+                scriptRequestId: requested.requestId,
+                scriptRequestIds: requested.requestIds,
+                referring,
+                partnerPrescriberIgnored: prescription.prescriber || null,
+              }),
+            },
+          });
+          await audit({
+            action: "eventide.script_requested",
+            object: order.id,
+            after: requested.requestId || "pending",
+          });
+          return requested.requestId || null;
+        }
+
+        // Practice key is not a distributor yet — place under Eventide's own MD with
+        // multi-state licenses on POST /prescriptions (patient state + home FL license).
+        const homeState = (process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE || "FL").trim().toUpperCase().slice(0, 2);
+        const ownFallback = await resolveEventideIssuePlan({ state: homeState });
+        if (!ownFallback.ok || ownFallback.mode !== "own" || !ownFallback.prescriber) {
           await prisma.order.update({
             where: { id: order.id },
             data: {
               status: "on_hold",
               escriptStatus: "pending_eventide_network",
               pharmacyId: eventidePharmacy?.id || undefined,
-              placementError: detail,
-              splitMessage: detail,
+              placementError: requested.error,
+              splitMessage: requested.error,
               prescriberJson: JSON.stringify({
                 mode: "network",
                 eventideRoute: plan.route,
@@ -366,37 +397,15 @@ export async function openRxcoreOrder(input: {
           });
           return null;
         }
-
-        await prisma.order.update({
-          where: { id: order.id },
-          data: {
-            status: "awaiting_prescription",
-            escriptStatus: "pending_eventide_network",
-            pharmacyId: eventidePharmacy?.id || undefined,
-            rxcoreOrderId: requested.requestId,
-            rxhereOrderId: requested.requestId,
-            placementError: "",
-            splitMessage: `Waiting for Eventide doctor network to issue/sign the prescription (script request ${requested.requestId || "pending"}). Pharmacy fills after they sign.`,
-            prescriberJson: JSON.stringify({
-              mode: "network",
-              eventideRoute: plan.route,
-              eventideReason: plan.reason,
-              scriptRequestId: requested.requestId,
-              scriptRequestIds: requested.requestIds,
-              referring,
-              partnerPrescriberIgnored: prescription.prescriber || null,
-            }),
-          },
-        });
+        prescriber = ownFallback.prescriber;
+        placementMode = "own_multistate";
         await audit({
-          action: "eventide.script_requested",
+          action: "eventide.network_fallback_own_multistate",
           object: order.id,
-          after: requested.requestId || "pending",
+          after: requested.error,
         });
-        return requested.requestId || null;
       }
 
-      const prescriber = plan.prescriber;
       if (!prescriber) {
         await prisma.order.update({
           where: { id: order.id },
@@ -416,7 +425,7 @@ export async function openRxcoreOrder(input: {
             escriptStatus: "issued_by_eventide",
             prescriberJson: JSON.stringify({
               ...prescriber,
-              mode: "own",
+              mode: placementMode,
               eventideRoute: plan.route,
               eventideReason: plan.reason,
               eventidePrescriberId: prescriber.eventidePrescriberId,
@@ -469,6 +478,7 @@ export async function openRxcoreOrder(input: {
       const providerNote = ` Issued under Eventide prescriber ${prescriber.practiceName || [prescriber.firstName, prescriber.lastName].filter(Boolean).join(" ")} (NPI ${prescriber.npiNumber || "—"}) · pharmacy routing by Eventide.`;
       const nextStatus =
         String(placed.status || "").toLowerCase() === "awaiting_payment" ? "awaiting_payment" : "submitted";
+      const vrPatientId = "patientId" in placed && placed.patientId ? String(placed.patientId) : "";
       await prisma.order.update({
         where: { id: order.id },
         data: {
@@ -479,8 +489,22 @@ export async function openRxcoreOrder(input: {
           escriptStatus: "issued_by_eventide",
           splitMessage: `${payNote}${sandboxNote}${providerNote}`.trim(),
           placementError: "",
+          ...(vrPatientId
+            ? {
+                notes: [order.notes, `eventide_patient_id=${vrPatientId}`]
+                  .filter(Boolean)
+                  .join("\n")
+                  .slice(0, 2000),
+              }
+            : {}),
         },
       });
+      if (vrPatientId) {
+        await prisma.orderLine.updateMany({
+          where: { orderId: order.id },
+          data: { rxcorePatientId: vrPatientId },
+        });
+      }
       await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
       // Do not emit order.received — that would overwrite awaiting_payment/submitted with "received".
       await prisma.orderEvent.create({
