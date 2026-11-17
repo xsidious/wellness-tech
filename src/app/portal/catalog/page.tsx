@@ -235,7 +235,10 @@ export default async function CatalogPage({
               <article className="mk-card" key={product.id}>
                 <div className="mk-card-media">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photoForClass(product.productClass, product.category)} alt="" />
+                  <img
+                    src={product.imageUrl || photoForClass(product.productClass, product.category)}
+                    alt=""
+                  />
                   <div className="mk-card-badges">
                     <span className="mk-badge">{vendorName}</span>
                     <span className="mk-badge mk-badge-soft">{product.productClass}</span>

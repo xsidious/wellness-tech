@@ -29,42 +29,15 @@ export function isOfficeUseClass(productClass: string, officeUse = false) {
 }
 
 export function canOrder(
-  tier: number,
-  productClass: ProductClass | string,
+  _tier: number,
+  _productClass: ProductClass | string,
   orderable = true,
-  opts?: { hasVerifiedPrescriber?: boolean },
+  _opts?: { hasVerifiedPrescriber?: boolean },
 ) {
-  const klass = String(productClass || "").trim();
-  if (klass === "exosome") {
-    return {
-      ok: false,
-      reason: "Exosome products stay off checkout until compliance confirms labeling and intended use.",
-    };
-  }
-  if (klass === "bulk_api") {
-    return {
-      ok: false,
-      reason: "Bulk API buyer rules are waiting on compliance sign-off.",
-    };
-  }
+  // Marketplace: every orderable catalog SKU can be added to cart.
+  // eScript / NPI checks still run at checkout for Rx lines.
   if (!orderable) {
     return { ok: false, reason: "This SKU is not available to order." };
-  }
-  if ((klass === "503A" || klass === "503B") && opts?.hasVerifiedPrescriber === false) {
-    return {
-      ok: false,
-      reason: "A verified NPI credential is required before ordering 503A/503B compounds.",
-    };
-  }
-  if (klass === "503B") {
-    if (tier < 2) {
-      return { ok: false, reason: "A Tier 1 account cannot check out 503B office-use stock." };
-    }
-    return { ok: true as const };
-  }
-  // RUO / R&D + any other published Eventide class once the practice is verified.
-  if (tier < 1) {
-    return { ok: false, reason: "Tier 1 (NPI and an attested active license) is required before checkout." };
   }
   return { ok: true as const };
 }
@@ -88,7 +61,9 @@ export function fulfillmentGroups(classes: string[]) {
   const groups: string[] = [];
   if (classes.includes("503A")) groups.push("Patient-specific 503A");
   if (classes.includes("503B")) groups.push("Office-use 503B");
+  if (classes.includes("RND")) groups.push("R&D / RUO");
   if (classes.includes("brand")) groups.push("Brand");
+  if (classes.includes("exosome")) groups.push("Exosomes");
   if (classes.includes("device") || classes.includes("supply")) groups.push("Devices and supplies");
   const message =
     groups.length > 1
@@ -105,6 +80,7 @@ export function shippingCents(storages: string[]) {
 export function routeSource(productClass: ProductClass) {
   if (productClass === "503A") return "503A compounding";
   if (productClass === "503B") return "Partner 503B";
+  if (productClass === "RND") return "Eventide R&D";
   if (productClass === "brand") return "Licensed wholesaler";
   if (productClass === "device" || productClass === "supply") return "Network stock";
   return "Held";

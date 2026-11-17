@@ -136,6 +136,18 @@ export function eventideConfigured() {
   return Boolean(apiToken());
 }
 
+/** Resolve Eventide/VitaRelay CDN asset paths to absolute URLs. */
+export function absoluteEventideAsset(pathOrUrl?: string | null) {
+  const raw = String(pathOrUrl || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const host = (process.env.RXHERE_ASSET_BASE_URL || process.env.VITARELAY_ASSET_BASE_URL || "https://vitarelay.com").replace(
+    /\/$/,
+    "",
+  );
+  return `${host}${raw.startsWith("/") ? "" : "/"}${raw}`;
+}
+
 /** @deprecated */
 export function rxhereConfigured() {
   return eventideConfigured();
@@ -651,6 +663,48 @@ async function fetchPublicCatalogPriceMap(): Promise<Map<string, number>> {
   return map;
 }
 
+async function fetchPublicCatalogImageMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const token = apiToken();
+  if (!token) return map;
+  const publicBase = (
+    process.env.VITARELAY_API_BASE_URL ||
+    process.env.EVENTIDE_PUBLIC_API_BASE_URL ||
+    "https://vitarelay.com/api/public/v1"
+  ).replace(/\/$/, "");
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+  };
+  const placer = placedByUserId();
+  if (placer) headers["X-User-Id"] = placer;
+
+  for (let page = 1; page <= 40; page += 1) {
+    try {
+      const res = await fetch(`${publicBase}/catalog?limit=100&page=${page}`, {
+        headers,
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: Array<Record<string, unknown>>;
+      };
+      const rows = Array.isArray(json.data) ? json.data : [];
+      if (!rows.length) break;
+      for (const item of rows) {
+        const id = String(item.id || "").trim();
+        const urls = Array.isArray(item.image_urls) ? item.image_urls : [];
+        const first = urls.length ? String(urls[0] || "") : "";
+        const abs = absoluteEventideAsset(first);
+        if (id && abs) map.set(id, abs);
+      }
+      if (rows.length < 100) break;
+    } catch {
+      break;
+    }
+  }
+  return map;
+}
+
 export async function probeFormularyCatalog(): Promise<
   | {
       sku: string;
@@ -666,6 +720,7 @@ export async function probeFormularyCatalog(): Promise<
       controlledSubstance?: boolean;
       slug?: string;
       requiresPrescription?: boolean;
+      imageUrl?: string;
     }[]
   | null
 > {
@@ -684,9 +739,13 @@ export async function probeFormularyCatalog(): Promise<
     controlledSubstance?: boolean;
     slug?: string;
     requiresPrescription?: boolean;
+    imageUrl?: string;
   }> = [];
 
-  const priceMap = await fetchPublicCatalogPriceMap();
+  const [priceMap, imageMap] = await Promise.all([
+    fetchPublicCatalogPriceMap(),
+    fetchPublicCatalogImageMap(),
+  ]);
 
   for (let page = 1; page <= 30; page += 1) {
     const result = await eventideFetch(`/catalog?limit=100&page=${page}`);
@@ -706,6 +765,8 @@ export async function probeFormularyCatalog(): Promise<
         priceMap.get(id) ??
         (nameKey ? priceMap.get(nameKey) : undefined) ??
         null;
+      const practiceImages = Array.isArray(item.image_urls) ? item.image_urls : [];
+      const practiceImage = practiceImages.length ? absoluteEventideAsset(String(practiceImages[0] || "")) : "";
       all.push({
         sku: id,
         name,
@@ -727,6 +788,7 @@ export async function probeFormularyCatalog(): Promise<
           item.requires_prescription != null
             ? Boolean(item.requires_prescription)
             : type === "503a" || type === "503b",
+        imageUrl: practiceImage || imageMap.get(id) || "",
       });
     }
     if (rows.length < 100) break;

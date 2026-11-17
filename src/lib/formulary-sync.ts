@@ -22,6 +22,7 @@ export type FormularyRow = {
   controlledSubstance?: boolean;
   slug?: string;
   requiresPrescription?: boolean;
+  imageUrl?: string;
 };
 
 function applyGlpNaming(text: string) {
@@ -113,6 +114,7 @@ export async function loadFormularyRows(): Promise<{ source: "api" | "json"; row
         controlledSubstance: row.controlledSubstance,
         slug: row.slug,
         requiresPrescription: row.requiresPrescription,
+        imageUrl: row.imageUrl,
       })),
     );
     return { source: "api", rows };
@@ -152,6 +154,7 @@ export async function syncRxHereFormulary(actorId = "") {
     const productClass = normalizeProductClass(row.productClass);
     const controlledSubstance = Boolean(row.controlledSubstance);
     const slug = String(row.slug || "").trim();
+    const imageUrl = String(row.imageUrl || "").trim();
     // Skip section-header rows (no medication / price) on local JSON fallbacks.
     if (source === "json" && (!(row.medication || row.name) || row.price == null || !Number.isFinite(Number(row.price)))) {
       skipped += 1;
@@ -202,6 +205,7 @@ export async function syncRxHereFormulary(actorId = "") {
         active: true,
         holdReason: "",
         description,
+        ...(imageUrl ? { imageUrl } : {}),
         lastSyncedAt: syncedAt,
       },
       update: {
@@ -220,6 +224,7 @@ export async function syncRxHereFormulary(actorId = "") {
         active: true,
         holdReason: "",
         description,
+        ...(imageUrl ? { imageUrl } : {}),
         lastSyncedAt: syncedAt,
       },
     });
@@ -239,8 +244,10 @@ export async function syncRxHereFormulary(actorId = "") {
 /** Upsert PrescribeUSA pen catalog into practice products (separate from Eventide). */
 export async function syncPrescribeUsaCatalog(actorId = "") {
   const { prescribeUsaPensCatalog } = await import("@/lib/prescribeusa-pens-catalog");
+  const { photos } = await import("@/lib/photos");
   const syncedAt = new Date();
   let upserted = 0;
+  const penImage = photos.peptides;
 
   for (const line of prescribeUsaPensCatalog) {
     const category = line.category.startsWith("PrescribeUSA")
@@ -276,6 +283,7 @@ export async function syncPrescribeUsaCatalog(actorId = "") {
         active: true,
         holdReason: "",
         description,
+        imageUrl: penImage,
         lastSyncedAt: syncedAt,
       },
       update: {
@@ -292,6 +300,7 @@ export async function syncPrescribeUsaCatalog(actorId = "") {
         active: true,
         holdReason: "",
         description,
+        imageUrl: penImage,
         lastSyncedAt: syncedAt,
       },
     });

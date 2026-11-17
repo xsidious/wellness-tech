@@ -3,23 +3,17 @@ import { describe, it } from "node:test";
 import { canAdminOrder, canOrder, commissionCents, fulfillmentGroups } from "./rules";
 
 describe("catalog gates", () => {
-  it("stops a Tier 1 account from ordering 503B office stock", () => {
-    const result = canOrder(1, "503B", true);
-    assert.equal(result.ok, false);
-    assert.match(result.reason || "", /Tier 1/);
+  it("lets any orderable SKU through the marketplace", () => {
+    assert.equal(canOrder(0, "503A", true).ok, true);
+    assert.equal(canOrder(1, "503B", true).ok, true);
+    assert.equal(canOrder(4, "exosome", true).ok, true);
+    assert.equal(canOrder(4, "bulk_api", true).ok, true);
+    assert.equal(canOrder(2, "RND", true).ok, true);
   });
 
-  it("lets Tier 2 order 503B and Tier 1 order a supply", () => {
-    assert.equal(canOrder(2, "503B", true).ok, true);
-    assert.equal(canOrder(1, "supply", true).ok, true);
-    assert.equal(canOrder(0, "503A", true).ok, false);
-    assert.equal(canOrder(1, "RND", true).ok, true);
-    assert.equal(canOrder(0, "RND", true).ok, false);
-  });
-
-  it("keeps exosomes and bulk APIs off checkout", () => {
+  it("still blocks SKUs marked not orderable", () => {
     assert.equal(canOrder(4, "exosome", false).ok, false);
-    assert.equal(canOrder(4, "bulk_api", true).ok, false);
+    assert.equal(canOrder(4, "supply", false).ok, false);
   });
 
   it("lets admin desk order active SKUs including held classes", () => {
