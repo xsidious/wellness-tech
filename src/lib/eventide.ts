@@ -598,6 +598,59 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
   };
 }
 
+/**
+ * Public VitaRelay catalog (`/api/public/v1`) is the only list that returns practice
+ * `price_cents` today. Practice API formulary (`/api/public/practice/v1`) returns SKUs
+ * without prices until Eventide attaches a practice price list to the API key.
+ */
+async function fetchPublicCatalogPriceMap(): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  const token = apiToken();
+  if (!token) return map;
+  const publicBase = (
+    process.env.VITARELAY_API_BASE_URL ||
+    process.env.EVENTIDE_PUBLIC_API_BASE_URL ||
+    "https://vitarelay.com/api/public/v1"
+  ).replace(/\/$/, "");
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+  };
+  const placer = placedByUserId();
+  if (placer) headers["X-User-Id"] = placer;
+
+  for (let page = 1; page <= 40; page += 1) {
+    try {
+      const res = await fetch(`${publicBase}/catalog?limit=100&page=${page}`, {
+        headers,
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: Array<Record<string, unknown>>;
+        total?: number;
+      };
+      const rows = Array.isArray(json.data) ? json.data : [];
+      if (!rows.length) break;
+      for (const item of rows) {
+        const id = String(item.id || "").trim();
+        const cents = typeof item.price_cents === "number" ? item.price_cents : null;
+        if (!id || cents == null || !Number.isFinite(cents) || cents < 0) continue;
+        map.set(id, cents);
+        const name = String(item.name || "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+        if (name) map.set(`name:${name}`, cents);
+      }
+      if (rows.length < 100) break;
+      if (typeof json.total === "number" && map.size >= json.total) break;
+    } catch {
+      break;
+    }
+  }
+  return map;
+}
+
 export async function probeFormularyCatalog(): Promise<
   | {
       sku: string;
@@ -633,6 +686,8 @@ export async function probeFormularyCatalog(): Promise<
     requiresPrescription?: boolean;
   }> = [];
 
+  const priceMap = await fetchPublicCatalogPriceMap();
+
   for (let page = 1; page <= 30; page += 1) {
     const result = await eventideFetch(`/catalog?limit=100&page=${page}`);
     if (!result.ok) break;
@@ -644,14 +699,21 @@ export async function probeFormularyCatalog(): Promise<
       const id = String(item.id || "").trim();
       if (!id) continue;
       const type = item.type ? String(item.type) : "503a";
+      const name = item.name ? String(item.name) : undefined;
+      const nameKey = name ? `name:${name.toLowerCase().replace(/\s+/g, " ").trim()}` : "";
+      const priceCents =
+        (typeof item.price_cents === "number" ? item.price_cents : null) ??
+        priceMap.get(id) ??
+        (nameKey ? priceMap.get(nameKey) : undefined) ??
+        null;
       all.push({
         sku: id,
-        name: item.name ? String(item.name) : undefined,
-        medication: item.name ? String(item.name) : undefined,
+        name,
+        medication: name,
         strength: Array.isArray(item.strengths) ? String(item.strengths[0] || "") : undefined,
         size: item.volume ? String(item.volume) : undefined,
         form: item.dosage_form ? String(item.dosage_form) : undefined,
-        price: typeof item.price_cents === "number" ? item.price_cents / 100 : undefined,
+        price: priceCents != null ? priceCents / 100 : undefined,
         category: item.category_label
           ? String(item.category_label)
           : item.category

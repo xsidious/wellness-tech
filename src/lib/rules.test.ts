@@ -13,6 +13,8 @@ describe("catalog gates", () => {
     assert.equal(canOrder(2, "503B", true).ok, true);
     assert.equal(canOrder(1, "supply", true).ok, true);
     assert.equal(canOrder(0, "503A", true).ok, false);
+    assert.equal(canOrder(1, "RND", true).ok, true);
+    assert.equal(canOrder(0, "RND", true).ok, false);
   });
 
   it("keeps exosomes and bulk APIs off checkout", () => {

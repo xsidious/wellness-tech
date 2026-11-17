@@ -36,20 +36,34 @@ const CATEGORY_SLUGS: Record<string, string> = {
 };
 
 export function photoForCategory(category?: string | null) {
-  const key = String(category || "")
+  const raw = String(category || "")
+    .replace(/^Eventide\s*·\s*/i, "")
+    .replace(/^PrescribeUSA(?:\s*Pens)?(?:\s*·\s*)?/i, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
   // Peptides use the lab-vial photography set
-  if (key === "peptides" || key === "peptide stacks") return photos.peptides;
-  const slug = CATEGORY_SLUGS[key] || "compounded";
+  if (raw === "peptides" || raw === "peptide stacks") return photos.peptides;
+  if (/weight|metabolic|glp|appetite/.test(raw)) return `/images/formulary/appetite-suppressant.svg`;
+  if (/hormone/.test(raw)) return `/images/formulary/hrt.svg`;
+  if (/cognitive|mood/.test(raw)) return `/images/formulary/cognitive.svg`;
+  if (/beauty|skin|hair/.test(raw)) return `/images/formulary/skin-hair.svg`;
+  if (/sexual/.test(raw)) return `/images/formulary/sexual-health.svg`;
+  if (/sleep|stress/.test(raw)) return `/images/formulary/sleep.svg`;
+  if (/immune|inflammation/.test(raw)) return `/images/formulary/immune.svg`;
+  if (/longevity|cellular/.test(raw)) return `/images/formulary/longevity.svg`;
+  if (/performance|energy|nutrient|peptide/.test(raw)) return photos.peptides;
+  if (/pain|joint|injury|tissue/.test(raw)) return `/images/formulary/tissue-repair.svg`;
+  if (/medical supplies|supply/.test(raw)) return photos.supplies;
+  if (/general wellness|wellness/.test(raw)) return `/images/formulary/wellness.svg`;
+  const slug = CATEGORY_SLUGS[raw] || "compounded";
   return `/images/formulary/${slug}.svg`;
 }
 
 export function photoForClass(productClass: string, category?: string | null) {
   if (category) return photoForCategory(category);
   if (productClass === "503A" || productClass === "brand") return photoForCategory("appetite suppressant");
-  if (productClass === "503B") return photoForCategory("peptides");
+  if (productClass === "503B" || productClass === "RND") return photoForCategory("peptides");
   if (productClass === "exosome") return photos.exosomes;
   if (productClass === "device") return photos.equipment;
   if (productClass === "supply") return photos.supplies;

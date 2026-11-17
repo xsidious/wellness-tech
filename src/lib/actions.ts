@@ -469,26 +469,73 @@ export async function saveNpi(formData: FormData): Promise<{ error?: string } | 
   redirect("/portal");
 }
 
+function initialsFromName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  if (parts.length === 1) return `${parts[0][0] || ""}.`.toUpperCase();
+  return `${parts[0][0] || ""}.${parts[parts.length - 1][0] || ""}.`.toUpperCase();
+}
+
 export async function addToCart(formData: FormData) {
   const userId = await readUserId();
   if (!userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { org: true } });
   if (!user) redirect("/login");
   const product = await prisma.product.findUnique({ where: { id: String(formData.get("productId") || "") } });
-  if (!product || !isProductClass(product.productClass)) redirect("/portal/catalog?error=Unknown+product");
+  if (!product || !product.active) redirect("/portal/catalog?error=Unknown+product");
   const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable);
   if (!gate.ok) redirect(`/portal/catalog?error=${encodeURIComponent(gate.reason || "Cannot add")}`);
-  const initials = String(formData.get("initials") || "").trim();
-  if (product.rxRequired && initials.length < 2) {
-    redirect("/portal/catalog?error=Patient-specific+lines+need+initials+only");
+
+  const patientId = String(formData.get("clinicalPatientId") || "").trim();
+  let clinicalPatientId = "";
+  let initials = String(formData.get("initials") || "").trim();
+
+  if (product.rxRequired) {
+    if (patientId === "self" || patientId === "") {
+      const self =
+        (await prisma.clinicalPatient.findFirst({
+          where: {
+            orgId: user.orgId,
+            email: { equals: user.email, mode: "insensitive" },
+            kianIntakeId: "",
+          },
+        })) ||
+        (await prisma.clinicalPatient.create({
+          data: {
+            orgId: user.orgId,
+            email: user.email,
+            fullName: user.name,
+            phone: "",
+            kianIntakeId: "",
+            sourceSite: "portal-self",
+          },
+        }));
+      clinicalPatientId = self.id;
+      initials = initialsFromName(self.fullName || user.name) || "ME";
+    } else {
+      const patient = await prisma.clinicalPatient.findFirst({
+        where: { id: patientId, orgId: user.orgId },
+      });
+      if (!patient) redirect("/portal/catalog?error=Choose+a+patient+on+your+practice");
+      clinicalPatientId = patient.id;
+      initials = initialsFromName(patient.fullName) || initials;
+    }
+    if (initials.length < 2) {
+      redirect("/portal/catalog?error=Choose+a+patient+(Myself+works)");
+    }
   }
+
   await prisma.cartItem.create({
     data: {
       userId: user.id,
       productId: product.id,
       qty: Math.max(1, Number(formData.get("qty") || 1)),
       patientInitials: initials,
-      sig: String(formData.get("sig") || ""),
+      clinicalPatientId,
+      sig: String(formData.get("sig") || "As directed by prescribing clinician.").trim(),
       daysSupply: Math.max(0, Number(formData.get("daysSupply") || (product.rxRequired ? 30 : 0))),
     },
   });
@@ -550,7 +597,7 @@ export async function placeOrder(formData: FormData) {
   let needsEscript = false;
   for (const item of items) {
     const product = byId.get(item.productId);
-    if (!product || !isProductClass(product.productClass)) return { error: "A cart line is no longer available." };
+    if (!product || !product.active) return { error: "A cart line is no longer available." };
     const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
       hasVerifiedPrescriber: product.productClass === "503A" || product.productClass === "503B" ? hasVerifiedPrescriber : undefined,
     });
@@ -825,7 +872,18 @@ export async function syncRxHereFormularyAction() {
   const { syncRxHereFormulary } = await import("@/lib/formulary-sync");
   const result = await syncRxHereFormulary(user.id);
   if (!result.ok) redirect(`/admin/products?error=${encodeURIComponent(result.error)}`);
-  redirect(`/admin/products?synced=${result.upserted}&source=${result.source}`);
+  redirect(`/admin/products?synced=${result.upserted}&source=${result.source}&vendor=eventide`);
+}
+
+export async function syncPrescribeUsaCatalogAction() {
+  const userId = await readUserId();
+  if (!userId) redirect("/login");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !rolesOf(user.roles).includes("admin")) redirect("/login");
+  const { syncPrescribeUsaCatalog } = await import("@/lib/formulary-sync");
+  const result = await syncPrescribeUsaCatalog(user.id);
+  if (!result.ok) redirect(`/admin/products?error=${encodeURIComponent("PrescribeUSA sync failed")}`);
+  redirect(`/admin/products?synced=${result.upserted}&source=${result.source}&vendor=prescribeusa`);
 }
 
 /** Push all credentialed WT prescribers onto the VitaRelay practice roster. */

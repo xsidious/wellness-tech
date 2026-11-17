@@ -65,12 +65,41 @@ function loadLocalFormulary(): FormularyRow[] {
   return [];
 }
 
+function fillMissingPricesFromLocal(rows: FormularyRow[]): FormularyRow[] {
+  const local = loadLocalFormulary();
+  if (!local.length) return rows;
+
+  function norm(s: string) {
+    return String(s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const byMed = new Map<string, number>();
+  for (const row of local) {
+    if (row.price == null || !Number.isFinite(Number(row.price))) continue;
+    const med = norm(row.medication || row.name || "");
+    if (med) byMed.set(med, Number(row.price));
+    const full = norm([row.medication || row.name, row.strength, row.size].filter(Boolean).join(" "));
+    if (full) byMed.set(full, Number(row.price));
+  }
+
+  return rows.map((row) => {
+    if (row.price != null && Number(row.price) > 0) return row;
+    const med = norm(row.medication || row.name || "");
+    const hit = byMed.get(med) ?? byMed.get(norm(row.name || ""));
+    if (hit == null) return row;
+    return { ...row, price: hit };
+  });
+}
+
 export async function loadFormularyRows(): Promise<{ source: "api" | "json"; rows: FormularyRow[] }> {
   const probed = await probeFormularyCatalog();
   if (probed?.length) {
-    return {
-      source: "api",
-      rows: probed.map((row) => ({
+    const rows = fillMissingPricesFromLocal(
+      probed.map((row) => ({
         sku: row.sku,
         medication: row.medication || row.name,
         name: row.name,
@@ -85,7 +114,8 @@ export async function loadFormularyRows(): Promise<{ source: "api" | "json"; row
         slug: row.slug,
         requiresPrescription: row.requiresPrescription,
       })),
-    };
+    );
+    return { source: "api", rows };
   }
   return { source: "json", rows: loadLocalFormulary() };
 }
@@ -106,8 +136,16 @@ export async function syncRxHereFormulary(actorId = "") {
       skipped += 1;
       continue;
     }
+    // Never overwrite PrescribeUSA (or other non-Eventide) SKUs from Eventide sync.
+    if (/^PUSA-/i.test(sku) || /^pusa-/i.test(sku)) {
+      skipped += 1;
+      continue;
+    }
     const name = buildName(row);
-    const category = applyGlpNaming(row.category || "Compounded");
+    const rawCategory = applyGlpNaming(row.category || "Compounded");
+    const category = rawCategory.startsWith("Eventide")
+      ? rawCategory
+      : `Eventide · ${rawCategory}`;
     const form = row.form || "";
     const strength = row.strength || "";
     const size = row.size || "";
@@ -139,7 +177,7 @@ export async function syncRxHereFormulary(actorId = "") {
       controlledSubstance ? "Controlled substance" : "",
       `SKU: ${sku}`,
       priceCents ? `Practice price: $${(priceCents / 100).toFixed(2)}` : "",
-      "VitaRelay Practice API · pharmacy fulfillment.",
+      "Vendor: Eventide · VitaRelay Practice API · pharmacy fulfillment.",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -196,4 +234,76 @@ export async function syncRxHereFormulary(actorId = "") {
   });
 
   return { ok: true as const, source, upserted, skipped, total: rows.length, syncedAt };
+}
+
+/** Upsert PrescribeUSA pen catalog into practice products (separate from Eventide). */
+export async function syncPrescribeUsaCatalog(actorId = "") {
+  const { prescribeUsaPensCatalog } = await import("@/lib/prescribeusa-pens-catalog");
+  const syncedAt = new Date();
+  let upserted = 0;
+
+  for (const line of prescribeUsaPensCatalog) {
+    const category = line.category.startsWith("PrescribeUSA")
+      ? line.category
+      : `PrescribeUSA · ${line.category}`;
+    const description = [
+      line.description,
+      line.strength ? `Strength: ${line.strength}` : "",
+      line.size ? `Size: ${line.size}` : "",
+      `SKU: ${line.sku}`,
+      `Practice price: $${(line.priceCents / 100).toFixed(2)}`,
+      "Vendor: PrescribeUSA · pre-filled injectable pens.",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    await prisma.product.upsert({
+      where: { sku: line.sku },
+      create: {
+        sku: line.sku,
+        rxcoreFormularyId: `pusa-${line.sku.toLowerCase()}`,
+        name: applyGlpNaming(line.name),
+        productClass: "503A",
+        category,
+        form: "Pre-Filled Injectable Pen",
+        strength: line.strength,
+        size: line.size,
+        storage: "refrigerated",
+        rxRequired: true,
+        controlledSubstance: false,
+        priceCents: line.priceCents,
+        orderable: true,
+        active: true,
+        holdReason: "",
+        description,
+        lastSyncedAt: syncedAt,
+      },
+      update: {
+        name: applyGlpNaming(line.name),
+        productClass: "503A",
+        category,
+        form: "Pre-Filled Injectable Pen",
+        strength: line.strength,
+        size: line.size,
+        storage: "refrigerated",
+        rxRequired: true,
+        priceCents: line.priceCents,
+        orderable: true,
+        active: true,
+        holdReason: "",
+        description,
+        lastSyncedAt: syncedAt,
+      },
+    });
+    upserted += 1;
+  }
+
+  await audit({
+    actorId,
+    action: "catalog.prescribeusa_sync",
+    object: "formulary",
+    after: String(upserted),
+  });
+
+  return { ok: true as const, source: "prescribeusa" as const, upserted, skipped: 0, total: upserted, syncedAt };
 }

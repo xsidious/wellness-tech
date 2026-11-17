@@ -1,6 +1,7 @@
 export const PRODUCT_CLASSES = [
   "503A",
   "503B",
+  "RND",
   "brand",
   "exosome",
   "device",
@@ -29,17 +30,18 @@ export function isOfficeUseClass(productClass: string, officeUse = false) {
 
 export function canOrder(
   tier: number,
-  productClass: ProductClass,
+  productClass: ProductClass | string,
   orderable = true,
   opts?: { hasVerifiedPrescriber?: boolean },
 ) {
-  if (productClass === "exosome") {
+  const klass = String(productClass || "").trim();
+  if (klass === "exosome") {
     return {
       ok: false,
       reason: "Exosome products stay off checkout until compliance confirms labeling and intended use.",
     };
   }
-  if (productClass === "bulk_api") {
+  if (klass === "bulk_api") {
     return {
       ok: false,
       reason: "Bulk API buyer rules are waiting on compliance sign-off.",
@@ -48,18 +50,19 @@ export function canOrder(
   if (!orderable) {
     return { ok: false, reason: "This SKU is not available to order." };
   }
-  if ((productClass === "503A" || productClass === "503B") && opts?.hasVerifiedPrescriber === false) {
+  if ((klass === "503A" || klass === "503B") && opts?.hasVerifiedPrescriber === false) {
     return {
       ok: false,
       reason: "A verified NPI credential is required before ordering 503A/503B compounds.",
     };
   }
-  if (productClass === "503B") {
+  if (klass === "503B") {
     if (tier < 2) {
       return { ok: false, reason: "A Tier 1 account cannot check out 503B office-use stock." };
     }
     return { ok: true as const };
   }
+  // RUO / R&D + any other published Eventide class once the practice is verified.
   if (tier < 1) {
     return { ok: false, reason: "Tier 1 (NPI and an attested active license) is required before checkout." };
   }
