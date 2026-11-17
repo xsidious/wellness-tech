@@ -51,6 +51,7 @@ export default async function ProductDetail({ params }: { params: Promise<{ sku:
           rxRequired={product.rxRequired}
           selfLabel={user.name}
           patients={otherPatients}
+          returnTo="/portal/catalog?cart=1"
         />
       ) : (
         <p className="error">{product.holdReason || gate.reason}</p>

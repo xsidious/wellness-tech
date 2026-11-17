@@ -5,12 +5,13 @@ import {
   StatusBadge,
 } from "@/components/portal/Workspace";
 import { CatalogAddForm } from "@/components/portal/CatalogAddForm";
+import { CatalogSideCart } from "@/components/portal/CatalogSideCart";
 import { requireUser, rolesOf } from "@/lib/guard";
 import { money } from "@/lib/money";
 import { photoForClass } from "@/lib/photos";
 import { submitCompoundRequest, toggleRxFavorite } from "@/lib/portal-ops-actions";
 import { prisma } from "@/lib/prisma";
-import { canOrder } from "@/lib/rules";
+import { canOrder, shippingCents } from "@/lib/rules";
 
 const PAGE_SIZE = 24;
 
@@ -63,6 +64,7 @@ export default async function CatalogPage({
     page?: string;
     requested?: string;
     error?: string;
+    cart?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -74,6 +76,7 @@ export default async function CatalogPage({
   const cat = (params.cat || "").trim();
   const q = (params.q || "").trim().toLowerCase();
   const page = Math.max(1, Number(params.page || 1) || 1);
+  const cartOpen = params.cart === "1" || params.cart === "open";
   const roles = rolesOf(user.roles);
   const hidePrice =
     user.org.hidePricingFromStaff &&
@@ -81,7 +84,7 @@ export default async function CatalogPage({
     !roles.some((r) => ["owner", "prescriber", "billing", "admin"].includes(r));
   const showPrice = user.org.verificationTier >= 1 && !hidePrice;
 
-  const [products, favorites, compoundRequests, patients] = await Promise.all([
+  const [products, favorites, compoundRequests, patients, cartItems] = await Promise.all([
     prisma.product.findMany({
       where: { active: true },
       orderBy: [{ category: "asc" }, { name: "asc" }],
@@ -98,6 +101,7 @@ export default async function CatalogPage({
       orderBy: { fullName: "asc" },
       take: 200,
     }),
+    prisma.cartItem.findMany({ where: { userId: user.id } }),
   ]);
 
   const favSet = new Set(favorites.map((f) => f.sku));
@@ -140,6 +144,45 @@ export default async function CatalogPage({
   const orderableCount = filtered.filter((p) => canOrder(user.org.verificationTier, p.productClass, p.orderable).ok).length;
   const tierBlocked = user.org.verificationTier < 1;
 
+  const cartProductIds = cartItems.map((item) => item.productId);
+  const cartProducts = cartProductIds.length
+    ? products.filter((p) => cartProductIds.includes(p.id))
+    : [];
+  const cartById = new Map(cartProducts.map((p) => [p.id, p]));
+  const missingCartIds = cartProductIds.filter((id) => !cartById.has(id));
+  if (missingCartIds.length) {
+    const extra = await prisma.product.findMany({ where: { id: { in: missingCartIds } } });
+    for (const p of extra) cartById.set(p.id, p);
+  }
+  const sideCartLines = cartItems
+    .map((item) => {
+      const product = cartById.get(item.productId);
+      if (!product) return null;
+      return {
+        id: item.id,
+        qty: item.qty,
+        patientInitials: item.patientInitials || "",
+        name: product.name,
+        sku: product.sku,
+        priceCents: product.priceCents || 0,
+        imageUrl: product.imageUrl || photoForClass(product.productClass, product.category),
+      };
+    })
+    .filter(Boolean) as {
+    id: string;
+    qty: number;
+    patientInitials: string;
+    name: string;
+    sku: string;
+    priceCents: number;
+    imageUrl: string;
+  }[];
+  const cartSubtotal = sideCartLines.reduce((sum, line) => sum + line.priceCents * line.qty, 0);
+  const cartShipping = sideCartLines.length
+    ? shippingCents([...cartById.values()].map((p) => p.storage))
+    : 0;
+  const addReturnTo = `/portal/catalog${qs({ cart: "1", page: safePage })}`;
+
   return (
     <div className="mk">
       <PageHeader
@@ -151,9 +194,12 @@ export default async function CatalogPage({
             <Link className="btn btn-ghost" href="/portal/price-list">
               Price list
             </Link>
-            <Link className="btn btn-accent" href="/portal/cart">
-              Cart
-            </Link>
+            <CatalogSideCart
+              lines={sideCartLines}
+              subtotalCents={cartSubtotal}
+              shippingCents={cartShipping}
+              initialOpen={cartOpen}
+            />
           </div>
         }
       />
@@ -267,6 +313,7 @@ export default async function CatalogPage({
                       rxRequired={product.rxRequired}
                       selfLabel={user.name}
                       patients={otherPatients}
+                      returnTo={addReturnTo}
                     />
                   ) : (
                     <p className="mk-blocked">{product.holdReason || gate.reason}</p>

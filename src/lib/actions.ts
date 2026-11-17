@@ -539,14 +539,30 @@ export async function addToCart(formData: FormData) {
       daysSupply: Math.max(0, Number(formData.get("daysSupply") || (product.rxRequired ? 30 : 0))),
     },
   });
-  redirect("/portal/cart");
+  redirect(safePortalReturn(formData.get("returnTo"), "/portal/catalog?cart=1"));
+}
+
+function safePortalReturn(raw: FormDataEntryValue | null, fallback: string) {
+  const value = String(raw || "").trim();
+  if (!value.startsWith("/portal/") || value.startsWith("//") || value.includes("://")) {
+    return fallback;
+  }
+  try {
+    const url = new URL(value, "https://wellnesstech.local");
+    if (url.pathname.startsWith("/portal/catalog")) {
+      url.searchParams.set("cart", "1");
+    }
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function removeCartItem(formData: FormData) {
   const userId = await readUserId();
   if (!userId) redirect("/login");
   await prisma.cartItem.deleteMany({ where: { id: String(formData.get("id") || ""), userId } });
-  redirect("/portal/cart");
+  redirect(safePortalReturn(formData.get("returnTo"), "/portal/cart"));
 }
 
 export async function placeOrder(formData: FormData) {

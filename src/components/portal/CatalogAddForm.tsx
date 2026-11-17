@@ -8,16 +8,19 @@ export function CatalogAddForm({
   selfLabel,
   patients,
   compact = false,
+  returnTo = "/portal/catalog?cart=1",
 }: {
   productId: string;
   rxRequired: boolean;
   selfLabel: string;
   patients: PatientOption[];
   compact?: boolean;
+  returnTo?: string;
 }) {
   return (
     <form action={addToCart} className={compact ? "mk-add" : "ws-product-form"}>
       <input type="hidden" name="productId" value={productId} />
+      <input type="hidden" name="returnTo" value={returnTo} />
       <input type="hidden" name="sig" value="As directed by prescribing clinician." />
       {rxRequired ? (
         <label className="mk-add-field">
