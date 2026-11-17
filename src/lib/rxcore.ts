@@ -7,9 +7,11 @@ import { signWebhook, verifyWebhook } from "@/lib/crypto";
 import {
   eventideConfigured,
   placePrescriptionOrder,
-  resolveEventideFulfillmentPrescriber,
+  requestEventideNetworkScript,
+  resolveEventideIssuePlan,
   type EventidePatient,
   type EventidePrescriber,
+  type EventideReferringProvider,
 } from "@/lib/eventide";
 
 const STATUS: Record<string, string> = {
@@ -229,10 +231,12 @@ async function buildPatientFromOrder(order: {
 export async function openRxcoreOrder(input: {
   orderId: string;
   lines: { productClass: ProductClass; patientInitials: string }[];
-  /** Optional; when omitted, patient/prescriber are rebuilt from the order for Eventide. */
+  /** Optional; when omitted, patient is rebuilt from the order. Issuing clinician always comes from Eventide. */
   prescription?: {
     patient: EventidePatient;
+    /** Ignored for VitaRelay issuance — kept only for audit/referring context. */
     prescriber?: EventidePrescriber;
+    referringProvider?: EventideReferringProvider;
     shippingMethod?: "2_DAY" | "OVERNIGHT";
     shippingDestinationType?: "patient_direct" | "practice_office" | "distributor_office";
     platformProductIdBySku?: Record<string, string>;
@@ -271,52 +275,126 @@ export async function openRxcoreOrder(input: {
           ? "practice_office"
           : "patient_direct");
 
-      // Always prefer Eventide's own roster / prescriber-route physicians + their pharmacy network.
-      const resolved = await resolveEventideFulfillmentPrescriber({
+      // Eventide physicians issue the Rx; KIAN/WT clinicians are referring only.
+      const plan = await resolveEventideIssuePlan({
         state: prescription.patient.address.state,
       });
-      if (!resolved.ok) {
+      if (!plan.ok) {
         await prisma.order.update({
           where: { id: order.id },
-          data: { status: "on_hold", splitMessage: resolved.error, placementError: resolved.error },
+          data: { status: "on_hold", splitMessage: plan.error, placementError: plan.error },
         });
         return null;
       }
-
-      const override = prescription.prescriber;
-      const prescriber: EventidePrescriber = {
-        ...resolved.prescriber,
-        // Explicit partner payload can fill gaps only; Eventide roster NPI/license win when present.
-        npiNumber: resolved.prescriber.npiNumber || override?.npiNumber,
-        licenseNumber: resolved.prescriber.licenseNumber || override?.licenseNumber,
-        licenseState: resolved.prescriber.licenseState || override?.licenseState,
-        deaNumber: resolved.prescriber.deaNumber || override?.deaNumber,
-        firstName: resolved.prescriber.firstName || override?.firstName,
-        lastName: resolved.prescriber.lastName || override?.lastName,
-        practiceName: resolved.prescriber.practiceName || override?.practiceName,
-      };
 
       const products = await prisma.product.findMany({
         where: { sku: { in: rxLines.map((line) => line.sku) } },
         select: { sku: true, rxcoreFormularyId: true },
       });
       const formularyBySku = new Map(products.map((p) => [p.sku, p.rxcoreFormularyId]));
+      const platformIds = rxLines
+        .map((line) => {
+          const fromMap = prescription?.platformProductIdBySku?.[line.sku];
+          const formulary = formularyBySku.get(line.sku);
+          return (
+            fromMap ||
+            (/^[0-9a-f-]{36}$/i.test(line.sku) ? line.sku : "") ||
+            (formulary && /^[0-9a-f-]{36}$/i.test(formulary) ? formulary : "") ||
+            ""
+          );
+        })
+        .filter(Boolean);
 
-      // Attach local Eventide pharmacy row for WT oversight; Eventide still routes compounding.
       const eventidePharmacy =
         (await prisma.pharmacy.findFirst({
           where: { name: { contains: "Eventide", mode: "insensitive" } },
         })) || (await ensurePharmacyNetwork().then((rows) => rows.find((p) => /eventide/i.test(p.name))));
+
+      const referring =
+        prescription.referringProvider ||
+        ({
+          externalId: order.source || "kian-prive",
+          name: order.source || "Referring clinic",
+          kind: "tele_clinic" as const,
+        } satisfies EventideReferringProvider);
+
+      if (plan.mode === "network") {
+        const requested = await requestEventideNetworkScript({
+          partnerOrderId: order.partnerExternalRef || order.invoiceNumber,
+          patient: prescription.patient,
+          platformProductIds: platformIds,
+          referringProvider: referring,
+          note: [
+            `Partner order ${order.partnerExternalRef || order.invoiceNumber}`,
+            `Referring clinic: ${referring.name}`,
+            "Please issue under Eventide network prescriber; pharmacy fulfillment by Eventide.",
+          ].join("\n"),
+        });
+        if (!requested.ok) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: "on_hold",
+              escriptStatus: "pending_eventide_network",
+              pharmacyId: eventidePharmacy?.id || undefined,
+              placementError: requested.error,
+              splitMessage: requested.error,
+              prescriberJson: JSON.stringify({
+                mode: "network",
+                eventideRoute: plan.route,
+                eventideReason: plan.reason,
+                referring,
+                partnerPrescriberIgnored: prescription.prescriber || null,
+              }),
+            },
+          });
+          return null;
+        }
+
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "awaiting_prescription",
+            escriptStatus: "pending_eventide_network",
+            pharmacyId: eventidePharmacy?.id || undefined,
+            rxcoreOrderId: requested.requestId,
+            rxhereOrderId: requested.requestId,
+            placementError: "",
+            splitMessage: `Waiting for Eventide doctor network to issue/sign the prescription (script request ${requested.requestId || "pending"}). Pharmacy fills after they sign.`,
+            prescriberJson: JSON.stringify({
+              mode: "network",
+              eventideRoute: plan.route,
+              eventideReason: plan.reason,
+              scriptRequestId: requested.requestId,
+              scriptRequestIds: requested.requestIds,
+              referring,
+              partnerPrescriberIgnored: prescription.prescriber || null,
+            }),
+          },
+        });
+        await audit({
+          action: "eventide.script_requested",
+          object: order.id,
+          after: requested.requestId || "pending",
+        });
+        return requested.requestId || null;
+      }
+
+      const prescriber = plan.prescriber;
       if (eventidePharmacy) {
         await prisma.order.update({
           where: { id: order.id },
           data: {
             pharmacyId: eventidePharmacy.id,
+            escriptStatus: "issued_by_eventide",
             prescriberJson: JSON.stringify({
               ...prescriber,
-              eventideRoute: resolved.route,
-              eventideReason: resolved.reason,
-              eventidePrescriberId: resolved.prescriber.eventidePrescriberId,
+              mode: "own",
+              eventideRoute: plan.route,
+              eventideReason: plan.reason,
+              eventidePrescriberId: prescriber.eventidePrescriberId,
+              referring,
+              partnerPrescriberIgnored: prescription.prescriber || null,
             }),
           },
         });
@@ -342,7 +420,7 @@ export async function openRxcoreOrder(input: {
             size: line.size || undefined,
             dosageForm: line.dosageForm || undefined,
             quantity: line.qty,
-            sig: line.sig || "As directed by prescribing clinician.",
+            sig: line.sig || "As directed by Eventide prescribing clinician.",
           };
         }),
         patient: prescription.patient,
@@ -361,7 +439,7 @@ export async function openRxcoreOrder(input: {
         "sandbox" in placed && placed.sandbox
           ? " Eventide marked this order environment=sandbox — confirm live practice billing is activated."
           : "";
-      const providerNote = ` Eventide provider ${prescriber.practiceName || [prescriber.firstName, prescriber.lastName].filter(Boolean).join(" ")} · pharmacy routing by Eventide.`;
+      const providerNote = ` Issued under Eventide prescriber ${prescriber.practiceName || [prescriber.firstName, prescriber.lastName].filter(Boolean).join(" ")} (NPI ${prescriber.npiNumber || "—"}) · pharmacy routing by Eventide.`;
       const nextStatus =
         String(placed.status || "").toLowerCase() === "awaiting_payment" ? "awaiting_payment" : "submitted";
       await prisma.order.update({
@@ -371,18 +449,13 @@ export async function openRxcoreOrder(input: {
           rxhereOrderId: placed.orderId,
           rxhereBatchId: placed.batchId || "",
           status: nextStatus,
+          escriptStatus: "issued_by_eventide",
           splitMessage: `${payNote}${sandboxNote}${providerNote}`.trim(),
           placementError: "",
         },
       });
       await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
       await emitOrderEvent(order.id, "order.received");
-      if (nextStatus === "awaiting_payment") {
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { status: "awaiting_payment", splitMessage: `${payNote}${sandboxNote}${providerNote}`.trim() },
-        });
-      }
       return placed.orderId;
     }
 
@@ -421,7 +494,12 @@ export async function openRxcoreOrder(input: {
 export async function retryEventideSubmission(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) return { ok: false as const, error: "Order not found." };
-  if (order.rxhereOrderId?.trim()) {
+  const alreadyPlaced =
+    order.rxhereOrderId?.trim() &&
+    order.escriptStatus !== "pending_eventide_network" &&
+    order.status !== "awaiting_prescription" &&
+    order.status !== "on_hold";
+  if (alreadyPlaced) {
     return { ok: true as const, orderId: order.rxhereOrderId, duplicate: true as const };
   }
   if (!eventideConfigured()) {

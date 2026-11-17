@@ -418,19 +418,35 @@ export async function getPrescriberRoute(params: { state?: string; patientId?: s
   return eventideFetch(`/prescriber-route?${q.toString()}`);
 }
 
+export type EventideIssuePlan =
+  | {
+      ok: true;
+      mode: "own";
+      route: string;
+      reason: string;
+      state: string;
+      prescriber: EventidePrescriber & { eventidePrescriberId?: string };
+    }
+  | {
+      ok: true;
+      mode: "network";
+      route: string;
+      reason: string;
+      state: string;
+    }
+  | { ok: false; error: string };
+
 /**
- * Resolve the Eventide/VitaRelay roster physician that should fulfill an order.
- * Pharmacy routing stays on Eventide; WT never invents a third-party RxHere provider.
+ * Decide who issues the Rx on Eventide:
+ * - `own` → Eventide roster physician licensed in the patient state (e.g. Carmen / FL)
+ * - `network` → Eventide doctor network must sign via POST /script-requests, then we order with escript_ids
+ *
+ * KIAN / WT clinicians are never the VitaRelay prescriber of record.
  */
-export async function resolveEventideFulfillmentPrescriber(input?: {
+export async function resolveEventideIssuePlan(input?: {
   state?: string | null;
   patientId?: string | null;
-}): Promise<{
-  ok: true;
-  prescriber: EventidePrescriber & { eventidePrescriberId?: string };
-  route?: string;
-  reason?: string;
-} | { ok: false; error: string }> {
+}): Promise<EventideIssuePlan> {
   if (!eventideConfigured()) {
     return { ok: false, error: "EVENTIDE_API_KEY / VITARELAY_API_KEY is not configured." };
   }
@@ -458,6 +474,19 @@ export async function resolveEventideFulfillmentPrescriber(input?: {
       ? ((routeResult.data as { data?: Record<string, unknown> }).data || (routeResult.data as Record<string, unknown>))
       : null;
 
+  const route = String(routeData?.route || "").toLowerCase();
+  const reason = String(routeData?.reason || "");
+
+  if (route === "network") {
+    return {
+      ok: true,
+      mode: "network",
+      route,
+      reason: reason || "network_no_own_prescriber_in_state",
+      state,
+    };
+  }
+
   const assignedId = String(
     routeData?.assigned_prescriber_id ||
       (routeData?.prescriber && typeof routeData.prescriber === "object"
@@ -466,23 +495,29 @@ export async function resolveEventideFulfillmentPrescriber(input?: {
       "",
   ).trim();
 
-  let picked =
-    (assignedId ? rosterRows.find((row) => row.id === assignedId) : undefined) ||
-    rosterRows.find((row) => row.npi_verified && row.npi_number) ||
-    rosterRows.find((row) => row.npi_number) ||
-    null;
+  // Only use the Eventide physician that VitaRelay assigned for this state — never a random roster row.
+  let picked = assignedId ? rosterRows.find((row) => row.id === assignedId) : undefined;
+  if (!picked && route === "own" && state) {
+    picked = rosterRows.find(
+      (row) =>
+        String(row.license_state || "")
+          .toUpperCase()
+          .slice(0, 2) === state && row.npi_number,
+    );
+  }
 
-  // Env fallback only when Eventide roster is empty (misconfigured practice key).
   if (!picked) {
     const envNpi = (process.env.EVENTIDE_PRESCRIBER_NPI || process.env.VITARELAY_PRESCRIBER_NPI || "").replace(/\D/g, "");
     const envLicense = process.env.EVENTIDE_PRESCRIBER_LICENSE_NUMBER?.trim() || "";
-    const envState = process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE?.trim() || state || "";
+    const envState = (process.env.EVENTIDE_PRESCRIBER_LICENSE_STATE || "").trim().toUpperCase().slice(0, 2);
     const envName = process.env.EVENTIDE_PRESCRIBER_NAME?.trim() || "";
-    if (/^\d{10}$/.test(envNpi) && envLicense && envState) {
+    if (/^\d{10}$/.test(envNpi) && envLicense && envState && (!state || envState === state)) {
       return {
         ok: true,
-        route: String(routeData?.route || "env_fallback"),
-        reason: String(routeData?.reason || "eventide_roster_empty"),
+        mode: "own",
+        route: route || "env_fallback",
+        reason: reason || "eventide_roster_empty",
+        state: state || envState,
         prescriber: {
           npiNumber: envNpi,
           licenseNumber: envLicense,
@@ -494,10 +529,15 @@ export async function resolveEventideFulfillmentPrescriber(input?: {
         },
       };
     }
+    if (!state) {
+      return {
+        ok: false,
+        error: "Patient state is required so Eventide can assign their licensed prescriber.",
+      };
+    }
     return {
       ok: false,
-      error:
-        "No Eventide/VitaRelay practice physicians on the roster. Add a provider in Eventide (or set EVENTIDE_PRESCRIBER_NPI + license env), then retry.",
+      error: `Eventide has no own licensed prescriber for ${state}, and doctor-network routing was not returned. Ask Eventide to add a state license or enable network signing.`,
     };
   }
 
@@ -506,8 +546,10 @@ export async function resolveEventideFulfillmentPrescriber(input?: {
     .split(/\s+/);
   return {
     ok: true,
-    route: String(routeData?.route || "roster"),
-    reason: String(routeData?.reason || "eventide_roster"),
+    mode: "own",
+    route: route || "own",
+    reason: reason || "own_prescriber_licensed_in_state",
+    state: state || String(picked.license_state || "").toUpperCase().slice(0, 2),
     prescriber: {
       eventidePrescriberId: picked.id,
       npiNumber: String(picked.npi_number || "").replace(/\D/g, ""),
@@ -518,6 +560,146 @@ export async function resolveEventideFulfillmentPrescriber(input?: {
       practiceName: picked.full_name || "Eventide",
       deaNumber: process.env.EVENTIDE_PRESCRIBER_DEA?.trim() || process.env.VITARELAY_PRESCRIBER_DEA?.trim() || undefined,
     },
+  };
+}
+
+/** @deprecated use resolveEventideIssuePlan */
+export async function resolveEventideFulfillmentPrescriber(input?: {
+  state?: string | null;
+  patientId?: string | null;
+}) {
+  const plan = await resolveEventideIssuePlan(input);
+  if (!plan.ok) return plan;
+  if (plan.mode !== "own") {
+    return {
+      ok: false as const,
+      error: `Patient state ${plan.state || "?"} requires Eventide doctor-network script signing (route=${plan.route}).`,
+    };
+  }
+  return {
+    ok: true as const,
+    prescriber: plan.prescriber,
+    route: plan.route,
+    reason: plan.reason,
+  };
+}
+
+export type EventideReferringProvider = {
+  externalId: string;
+  name: string;
+  kind?: "clinic" | "tele_clinic";
+  email?: string;
+  phone?: string;
+};
+
+/** Ask Eventide’s doctor network to put in / sign the prescription (distributor script-request flow). */
+export async function requestEventideNetworkScript(input: {
+  partnerOrderId: string;
+  patient: EventidePatient;
+  platformProductIds: string[];
+  referringProvider: EventideReferringProvider;
+  note?: string;
+}) {
+  if (!eventideConfigured()) {
+    return { ok: false as const, status: 503, error: "EVENTIDE_API_KEY / VITARELAY_API_KEY is not configured.", data: {} };
+  }
+  const products = input.platformProductIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  if (!products.length) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "No VitaRelay product UUIDs available for Eventide doctor-network script request.",
+      data: {},
+    };
+  }
+
+  const body = {
+    patient: {
+      first_name: input.patient.firstName,
+      last_name: input.patient.lastName,
+      dob: input.patient.dateOfBirth,
+      email: input.patient.email || undefined,
+      phone: input.patient.phone || undefined,
+      external_patient_id: input.patient.email || input.partnerOrderId,
+      allergies: input.patient.allergies ? [input.patient.allergies] : undefined,
+      address: {
+        line1: input.patient.address.line1,
+        line2: input.patient.address.line2 || undefined,
+        city: input.patient.address.city,
+        state: input.patient.address.state,
+        postal_code: input.patient.address.zipCode,
+      },
+    },
+    provider: {
+      external_id: input.referringProvider.externalId.slice(0, 128),
+      name: input.referringProvider.name,
+      kind: input.referringProvider.kind || "tele_clinic",
+      email: input.referringProvider.email || undefined,
+      phone: input.referringProvider.phone || undefined,
+    },
+    medications: products.slice(0, 20).map((platform_product_id) => ({ platform_product_id })),
+    note: (input.note || `KIAN/WT order ${input.partnerOrderId} — please issue under Eventide network prescriber.`).slice(
+      0,
+      1000,
+    ),
+  };
+
+  const result = await eventideFetch("/script-requests", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  if (!result.ok) {
+    const raw = errorMessage(result.data, result.status);
+    const notDistributor = /not_a_distributor/i.test(raw) || result.status === 403;
+    return {
+      ok: false as const,
+      status: result.status,
+      error: notDistributor
+        ? "Eventide doctor-network signing requires a distributor-enabled Practice API account. Ask Eventide to enable script-requests (or add an own licensed Eventide prescriber for this patient state), then retry."
+        : raw,
+      data: result.data,
+    };
+  }
+
+  const payload = result.data as {
+    data?: { request_id?: string; request_ids?: string[]; status?: string; sandbox?: boolean };
+  };
+  const requestId = payload.data?.request_id || payload.data?.request_ids?.[0] || "";
+  return {
+    ok: true as const,
+    requestId,
+    requestIds: payload.data?.request_ids || (requestId ? [requestId] : []),
+    status: payload.data?.status || "pending",
+    sandbox: Boolean(payload.data?.sandbox),
+    data: result.data,
+  };
+}
+
+export async function placeOrderWithEscriptIds(input: {
+  partnerOrderId: string;
+  escriptIds: string[];
+  shippingDestinationType?: PlacePrescriptionInput["shippingDestinationType"];
+}) {
+  const dest = normalizeShippingDestination(input.shippingDestinationType);
+  const result = await eventideFetch("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      external_order_id: input.partnerOrderId,
+      shipping_destination_type: dest,
+      escript_ids: input.escriptIds,
+    }),
+  });
+  if (!result.ok) {
+    return { ok: false as const, status: result.status, error: errorMessage(result.data, result.status), data: result.data };
+  }
+  const payload = result.data as { data?: { order_id?: string; status?: string }; order_id?: string; status?: string };
+  const orderId = payload.data?.order_id || payload.order_id || "";
+  return {
+    ok: true as const,
+    orderId,
+    status: payload.data?.status || payload.status || "submitted",
+    data: result.data,
   };
 }
 

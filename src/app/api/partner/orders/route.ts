@@ -51,8 +51,23 @@ type PartnerBody = {
     allergies?: string;
     address?: EventideAddress;
   };
-  /** Optional; Eventide roster physicians are preferred at placement time. */
+  /** Referring clinic only — Eventide physicians issue the Rx. */
+  referringProvider?: {
+    externalId?: string;
+    name?: string;
+    kind?: "clinic" | "tele_clinic";
+    email?: string;
+    phone?: string;
+  };
+  /** @deprecated Ignored for VitaRelay issuance; stored as referring context only. */
   prescriber?: EventidePrescriber;
+  provider?: {
+    external_id?: string;
+    name?: string;
+    kind?: string;
+    phone?: string;
+    npi?: string;
+  };
 };
 
 function splitName(full?: string) {
@@ -306,7 +321,11 @@ export async function POST(request: Request) {
         .join("\n"),
       patientJson: packed.patientJson,
       patientCipher: packed.patientCipher,
-      prescriberJson: JSON.stringify(body.prescriber || {}),
+      prescriberJson: JSON.stringify({
+        referringProvider: body.referringProvider || body.provider || null,
+        partnerPrescriberIgnored: body.prescriber || null,
+        note: "Eventide physicians issue the prescription; partner clinician is referring only.",
+      }),
       shipToJson: JSON.stringify(ship),
       kianIntakeId: clinicalPatient.kianIntakeId,
       clinicalChartJson: JSON.stringify(chart || {}),
@@ -341,8 +360,24 @@ export async function POST(request: Request) {
         })),
       prescription: {
         patient,
-        prescriber: body.prescriber,
+        // Do not pass partner clinician as issuing Eventide prescriber.
+        referringProvider: {
+          externalId: String(
+            body.referringProvider?.externalId || body.provider?.external_id || partnerSite || "partner",
+          ).slice(0, 128),
+          name: String(body.referringProvider?.name || body.provider?.name || partnerSite || "Referring clinic"),
+          kind:
+            body.referringProvider?.kind ||
+            (body.provider?.kind === "clinic" ? "clinic" : "tele_clinic"),
+          email: body.referringProvider?.email,
+          phone: body.referringProvider?.phone || body.provider?.phone,
+        },
         shippingMethod: body.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
+        shippingDestinationType:
+          body.shippingDestinationType === "practice_office" ||
+          body.shippingDestinationType === "provider_clinic"
+            ? "practice_office"
+            : "patient_direct",
         platformProductIdBySku: Object.fromEntries(
           resolvedLines.map(({ line, product }) => [
             product.sku,
