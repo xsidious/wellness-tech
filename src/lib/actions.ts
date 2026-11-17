@@ -486,7 +486,11 @@ export async function addToCart(formData: FormData) {
   if (!user) redirect("/login");
   const product = await prisma.product.findUnique({ where: { id: String(formData.get("productId") || "") } });
   if (!product || !product.active) redirect("/portal/catalog?error=Unknown+product");
-  const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable);
+  const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
+    sku: product.sku,
+    category: product.category,
+    rxcoreFormularyId: product.rxcoreFormularyId,
+  });
   if (!gate.ok) redirect(`/portal/catalog?error=${encodeURIComponent(gate.reason || "Cannot add")}`);
 
   const patientId = String(formData.get("clinicalPatientId") || "").trim();
@@ -631,6 +635,9 @@ export async function placeOrder(formData: FormData) {
       const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
         hasVerifiedPrescriber:
           product.productClass === "503A" || product.productClass === "503B" ? hasVerifiedPrescriber : undefined,
+        sku: product.sku,
+        category: product.category,
+        rxcoreFormularyId: product.rxcoreFormularyId,
       });
       if (!gate.ok) return { error: gate.reason };
       if (product.rxRequired && item.patientInitials.trim().length < 2) {

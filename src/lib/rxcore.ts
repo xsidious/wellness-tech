@@ -492,7 +492,11 @@ export async function createExternalOrder(input: { orgId: string; userId: string
   if (!org || !product || !isProductClass(product.productClass)) {
     return { error: "Unknown SKU." };
   }
-  const gate = canOrder(org.verificationTier, product.productClass, product.orderable);
+  const gate = canOrder(org.verificationTier, product.productClass, product.orderable, {
+    sku: product.sku,
+    category: product.category,
+    rxcoreFormularyId: product.rxcoreFormularyId,
+  });
   if (!gate.ok) return { error: gate.reason };
   const count = await prisma.order.count();
   const shipping = shippingCents([product.storage]);

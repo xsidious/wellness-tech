@@ -20,7 +20,11 @@ export default async function ProductDetail({ params }: { params: Promise<{ sku:
     take: 200,
   });
   const otherPatients = patients.filter((p) => p.email.toLowerCase() !== user.email.toLowerCase());
-  const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable);
+  const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
+    sku: product.sku,
+    category: product.category,
+    rxcoreFormularyId: product.rxcoreFormularyId,
+  });
 
   return (
     <div className="mk" style={{ maxWidth: 720 }}>

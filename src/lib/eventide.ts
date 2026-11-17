@@ -227,34 +227,58 @@ async function resolvePlatformProductId(item: EventideItem): Promise<string | nu
   if (item.platformProductId && isUuid(item.platformProductId)) return item.platformProductId.trim();
   if (item.sku && isUuid(item.sku)) return item.sku.trim();
 
+  // Prefer a formulary UUID already stamped on our product row.
+  if (item.sku) {
+    const local = await prisma.product.findFirst({
+      where: {
+        OR: [{ sku: item.sku }, { rxcoreFormularyId: item.sku }],
+      },
+      select: { sku: true, rxcoreFormularyId: true },
+    });
+    if (local?.rxcoreFormularyId && isUuid(local.rxcoreFormularyId)) return local.rxcoreFormularyId;
+    if (local?.sku && isUuid(local.sku)) return local.sku;
+  }
+
   const query = (item.name || item.sku || "").trim();
   if (!query) return null;
 
-  const result = await eventideFetch(`/catalog?limit=25&q=${encodeURIComponent(query.slice(0, 200))}`);
-  if (!result.ok) return null;
-  const rows = Array.isArray((result.data as { data?: unknown[] }).data)
-    ? ((result.data as { data: Array<Record<string, unknown>> }).data)
-    : [];
+  // Try short medication token first (FOXO4 → FOX) then full name.
+  const token = query.split(/[\s(/·|]+/).filter(Boolean)[0] || query;
+  const searches = Array.from(new Set([token.slice(0, 40), query.slice(0, 120)]));
+  const rows: Array<Record<string, unknown>> = [];
+  for (const q of searches) {
+    const result = await eventideFetch(`/catalog?limit=50&q=${encodeURIComponent(q)}`);
+    if (!result.ok) continue;
+    const batch = Array.isArray((result.data as { data?: unknown[] }).data)
+      ? ((result.data as { data: Array<Record<string, unknown>> }).data)
+      : [];
+    rows.push(...batch);
+  }
   if (!rows.length) return null;
 
-  const want = normalizeName(item.name || item.sku);
+  const want = normalizeName(item.name || item.sku).replace(/foxo?\s*0?4/g, "fox 04");
   const strength = normalizeName(item.strength || "");
   const scored = rows
     .map((row) => {
       const id = String(row.id || "");
-      const name = normalizeName(String(row.name || ""));
+      const name = normalizeName(String(row.name || "")).replace(/foxo?\s*0?4/g, "fox 04");
       let score = 0;
       if (name === want) score += 100;
       if (want && name.includes(want)) score += 40;
       if (want && want.includes(name)) score += 20;
       if (strength && name.includes(strength)) score += 25;
       if (item.sku && String(row.slug || "").toLowerCase().includes(item.sku.toLowerCase())) score += 15;
+      // Token overlap for legacy ↔ VR naming (FOXO4 vs FOX-04 DRI)
+      const wantParts = new Set(want.split(" ").filter((p) => p.length > 2));
+      for (const part of name.split(" ")) {
+        if (wantParts.has(part)) score += 10;
+      }
       return { id, score, name };
     })
     .filter((row) => row.id && isUuid(row.id))
     .sort((a, b) => b.score - a.score);
 
-  return scored[0]?.score ? scored[0].id : null;
+  return scored[0]?.score && scored[0].score >= 40 ? scored[0].id : null;
 }
 
 export async function getShippingRates() {

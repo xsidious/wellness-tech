@@ -16,6 +16,29 @@ describe("catalog gates", () => {
     assert.equal(canOrder(4, "supply", false).ok, false);
   });
 
+  it("blocks Eventide lines without a VitaRelay UUID", () => {
+    assert.equal(
+      canOrder(2, "503A", true, { sku: "AA-FOX", category: "Anti-Aging", rxcoreFormularyId: "AA-FOX" }).ok,
+      false,
+    );
+    assert.equal(
+      canOrder(2, "503A", true, {
+        sku: "ccf77eba-4e8b-4b54-8151-82c12cb66653",
+        category: "Eventide · Anti-Aging",
+        rxcoreFormularyId: "ccf77eba-4e8b-4b54-8151-82c12cb66653",
+      }).ok,
+      true,
+    );
+    assert.equal(
+      canOrder(2, "503A", true, {
+        sku: "PUSA-GLP1S-1-5",
+        category: "PrescribeUSA Pens · GLP-1",
+        rxcoreFormularyId: "pusa-pusa-glp1s-1-5",
+      }).ok,
+      true,
+    );
+  });
+
   it("lets admin desk order active SKUs including held classes", () => {
     assert.equal(canAdminOrder(true).ok, true);
     assert.equal(canAdminOrder(false).ok, false);

@@ -28,16 +28,61 @@ export function isOfficeUseClass(productClass: string, officeUse = false) {
   return productClass === "device" || productClass === "supply" || productClass === "brand";
 }
 
+const VITARELAY_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** PrescribeUSA pens are a separate vendor — not placed through VitaRelay. */
+export function isPrescribeUsaProduct(input: {
+  sku?: string | null;
+  category?: string | null;
+  rxcoreFormularyId?: string | null;
+}) {
+  return (
+    /^PrescribeUSA/i.test(String(input.category || "")) ||
+    /^PUSA-/i.test(String(input.sku || "")) ||
+    /^pusa-/i.test(String(input.rxcoreFormularyId || ""))
+  );
+}
+
+/** Eventide fulfillment requires a VitaRelay platform product UUID. */
+export function hasVitaRelayCatalogMatch(input: {
+  sku?: string | null;
+  category?: string | null;
+  rxcoreFormularyId?: string | null;
+}) {
+  if (isPrescribeUsaProduct(input)) return true;
+  return VITARELAY_UUID.test(String(input.sku || "")) || VITARELAY_UUID.test(String(input.rxcoreFormularyId || ""));
+}
+
 export function canOrder(
   _tier: number,
   _productClass: ProductClass | string,
   orderable = true,
-  _opts?: { hasVerifiedPrescriber?: boolean },
+  opts?: {
+    hasVerifiedPrescriber?: boolean;
+    sku?: string | null;
+    category?: string | null;
+    rxcoreFormularyId?: string | null;
+  },
 ) {
   // Marketplace: every orderable catalog SKU can be added to cart.
   // eScript / NPI checks still run at checkout for Rx lines.
   if (!orderable) {
     return { ok: false, reason: "This SKU is not available to order." };
+  }
+  if (
+    opts &&
+    (opts.sku != null || opts.rxcoreFormularyId != null || opts.category != null) &&
+    !hasVitaRelayCatalogMatch({
+      sku: opts.sku,
+      category: opts.category,
+      rxcoreFormularyId: opts.rxcoreFormularyId,
+    })
+  ) {
+    return {
+      ok: false,
+      reason: "Not linked to the live VitaRelay/Eventide catalog — blocked to prevent wrong shipment.",
+    };
   }
   return { ok: true as const };
 }

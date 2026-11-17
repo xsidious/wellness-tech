@@ -141,7 +141,13 @@ export default async function CatalogPage({
     return s ? `?${s}` : "";
   };
 
-  const orderableCount = filtered.filter((p) => canOrder(user.org.verificationTier, p.productClass, p.orderable).ok).length;
+  const orderableCount = filtered.filter((p) =>
+    canOrder(user.org.verificationTier, p.productClass, p.orderable, {
+      sku: p.sku,
+      category: p.category,
+      rxcoreFormularyId: p.rxcoreFormularyId,
+    }).ok,
+  ).length;
   const tierBlocked = user.org.verificationTier < 1;
 
   const cartProductIds = cartItems.map((item) => item.productId);
@@ -274,7 +280,11 @@ export default async function CatalogPage({
       ) : (
         <div className="mk-grid">
           {pageItems.map((product) => {
-            const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable);
+            const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
+              sku: product.sku,
+              category: product.category,
+              rxcoreFormularyId: product.rxcoreFormularyId,
+            });
             const fav = favSet.has(product.sku);
             const vendorName = vendorOf(product.category) === "prescribeusa" ? "PrescribeUSA" : "Eventide";
             return (

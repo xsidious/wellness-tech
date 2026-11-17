@@ -185,6 +185,13 @@ export async function syncRxHereFormulary(actorId = "") {
       .filter(Boolean)
       .join(" · ");
 
+    // Only accept VitaRelay platform UUIDs for Eventide orderable catalog rows.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sku);
+    if (source === "api" && !isUuid) {
+      skipped += 1;
+      continue;
+    }
+
     await prisma.product.upsert({
       where: { sku },
       create: {
@@ -201,9 +208,9 @@ export async function syncRxHereFormulary(actorId = "") {
         rxRequired,
         controlledSubstance,
         priceCents,
-        orderable: true,
+        orderable: isUuid,
         active: true,
-        holdReason: "",
+        holdReason: isUuid ? "" : "Not a VitaRelay platform product id.",
         description,
         ...(imageUrl ? { imageUrl } : {}),
         lastSyncedAt: syncedAt,
@@ -220,9 +227,9 @@ export async function syncRxHereFormulary(actorId = "") {
         rxRequired,
         controlledSubstance,
         ...(priceCents > 0 ? { priceCents } : {}),
-        orderable: true,
+        orderable: isUuid,
         active: true,
-        holdReason: "",
+        holdReason: isUuid ? "" : "Not a VitaRelay platform product id.",
         description,
         ...(imageUrl ? { imageUrl } : {}),
         lastSyncedAt: syncedAt,
@@ -231,14 +238,50 @@ export async function syncRxHereFormulary(actorId = "") {
     upserted += 1;
   }
 
+  let blockedLegacy = 0;
+  if (source === "api") {
+    blockedLegacy = await blockLegacyNonEventideProducts();
+  }
+
   await audit({
     actorId,
     action: "catalog.vitarelay_sync",
     object: "formulary",
-    after: `${source}:${upserted}`,
+    after: `${source}:${upserted};blocked:${blockedLegacy}`,
   });
 
-  return { ok: true as const, source, upserted, skipped, total: rows.length, syncedAt };
+  return { ok: true as const, source, upserted, skipped, blockedLegacy, total: rows.length, syncedAt };
+}
+
+/** Disable legacy local-formulary SKUs that are not VitaRelay UUIDs (keeps PrescribeUSA). */
+export async function blockLegacyNonEventideProducts() {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const products = await prisma.product.findMany({
+    where: { active: true },
+    select: { id: true, sku: true, category: true, rxcoreFormularyId: true, orderable: true },
+  });
+  let blocked = 0;
+  for (const product of products) {
+    if (
+      /^PrescribeUSA/i.test(product.category) ||
+      /^PUSA-/i.test(product.sku) ||
+      /^pusa-/i.test(product.rxcoreFormularyId || "")
+    ) {
+      continue;
+    }
+    if (UUID.test(product.sku) || UUID.test(product.rxcoreFormularyId || "")) continue;
+    if (!product.orderable) continue;
+    await prisma.product.update({
+      where: { id: product.id },
+      data: {
+        active: false,
+        orderable: false,
+        holdReason: "Not in live VitaRelay/Eventide catalog — blocked to prevent wrong shipment.",
+      },
+    });
+    blocked += 1;
+  }
+  return blocked;
 }
 
 /** Upsert PrescribeUSA pen catalog into practice products (separate from Eventide). */
