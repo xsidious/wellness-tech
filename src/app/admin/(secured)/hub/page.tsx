@@ -181,8 +181,8 @@ export default async function HubControlPage({
             }
           />
           <StatTile
-            label="Network pharmacy"
-            value={eventidePharmacy?.name || "Eventide network"}
+            label="Eventide pharmacy"
+            value={eventidePharmacy?.name?.replace(/rxhere/gi, "Eventide") || "Eventide / VitaRelay"}
             hint={eventidePharmacy?.region || "VitaRelay routes fulfillment"}
           />
         </div>

@@ -1,6 +1,6 @@
 # Wellness Tech
 
-B2B practice platform. Paid KIAN Privé therapy orders post to `POST /api/partner/orders`, then Wellness Tech places 503A lines on the RxHere Partner API (`POST /logistics/orders`).
+B2B practice platform. Paid KIAN Privé therapy orders post to `POST /api/partner/orders`, then Wellness Tech places 503A/503B lines on the **Eventide / VitaRelay Practice API** (`POST /prescriptions`).
 
 ## Run
 
@@ -12,7 +12,7 @@ npm run dev
 
 Open http://localhost:3010
 
-Sync the formulary (probes RxHere, falls back to `data/rxhere-formulary.json`):
+Sync the formulary (probes Eventide/VitaRelay, falls back to local catalog JSON):
 
 ```bash
 npx tsx scripts/sync-formulary.ts
@@ -22,7 +22,9 @@ npx tsx scripts/sync-formulary.ts
 
 ## Partner env
 
-Set `RXHERE_API_BASE_URL`, `RXHERE_API_TOKEN`, `RXHERE_WEBHOOK_SECRET`, `WT_PARTNER_ORDER_SECRET`, and optionally `KIAN_STATUS_WEBHOOK_URL`. Do not commit tokens.
+Set `EVENTIDE_API_KEY` or `VITARELAY_API_KEY`, optional `EVENTIDE_API_BASE_URL`, `EVENTIDE_WEBHOOK_SECRET` / `VITARELAY_WEBHOOK_SECRET`, `WT_PARTNER_ORDER_SECRET`, and optionally `KIAN_STATUS_WEBHOOK_URL`. Do not commit tokens.
+
+Webhook URL: `/api/webhooks/eventide`
 
 ## Practice sign-in (live)
 
@@ -38,7 +40,3 @@ Set Cloudflare Turnstile keys (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECR
 | admin@wellnesstech.demo | WellnessTech#Admin9! | — | Catalog admin (`/admin/login`) |
 
 Sandbox NPI for a new prescriber: `1000000001`. A real 10-digit NPI is looked up in the public NPI registry.
-
-Demo API key: `wt_sandbox_demo_key`
-
-Shipping on screen is the sandbox fee from `DECISIONS.md`, not a contracted rate.

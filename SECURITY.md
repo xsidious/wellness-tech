@@ -24,6 +24,6 @@ Not done, and required before a real launch:
 - A signed BAA, HIPAA hosting, MFA via a hardware key / authenticator app, and the license, DEA, and OIG vendors.
 - Redis-backed rate limits (in-memory buckets reset per serverless instance).
 - Compliance sign-off on exosomes, distributor licensing, prescription commissions, and the merchant account.
-- RxHere Partner API tokens and webhook secrets stay in environment variables. Never commit them. Configure the portal webhook URL to `/api/webhooks/rxhere`.
+- Eventide / VitaRelay API tokens and webhook secrets stay in environment variables. Never commit them. Configure the portal webhook URL to `/api/webhooks/eventide`.
 
-Those items stay off until Sarah and counsel close section 17 of the RxCore blueprint.
+Those items stay off until Sarah and counsel close section 17 of the blueprint.

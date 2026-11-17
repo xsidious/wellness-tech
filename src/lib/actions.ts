@@ -10,6 +10,7 @@ import { clearLogin, readPending, readUserId, setLogin, setPending } from "@/lib
 import { canOrder, fulfillmentGroups, isProductClass, requiresEscript, shippingCents } from "@/lib/rules";
 import { ensurePharmacyNetwork } from "@/lib/ensure-pharmacies";
 import { createExternalOrder, emitOrderEvent, ensurePatient, nextEvent, openRxcoreOrder } from "@/lib/rxcore";
+import { packPatient, type EventidePatient } from "@/lib/eventide";
 import { rolesOf } from "@/lib/guard";
 import { honeypotTripped, verifyTurnstile } from "@/lib/anti-bot";
 import { sendMagicLoginCode } from "@/lib/email";
@@ -664,10 +665,9 @@ export async function placeOrder(formData: FormData) {
       subtotal += product.priceCents * item.qty;
     }
 
-    if (needsEscript && !signatureDataUrl.startsWith("data:image")) {
-      return { error: "503A/503B lines require a signed eScript before the order can go to pharmacy." };
-    }
-    if (needsEscript) {
+    // Local practice eScript is optional chart copy — Eventide physicians issue the VitaRelay Rx.
+    const hasLocalEscript = signatureDataUrl.startsWith("data:image");
+    if (needsEscript && hasLocalEscript) {
       const { assertCanSignEscript } = await import("@/lib/escript");
       const gate = assertCanSignEscript(user);
       if (!gate.ok) return { error: gate.error };
@@ -680,7 +680,116 @@ export async function placeOrder(formData: FormData) {
     const shipping = shippingCents(products.map((product) => product.storage));
     const pharmacies = await ensurePharmacyNetwork();
     const eventide = pharmacies.find((p) => /eventide/i.test(p.name)) || pharmacies[0];
-    const clinicalPatientId = items.map((i) => i.clinicalPatientId).find(Boolean) || null;
+
+    const firstName = String(formData.get("patientFirstName") || "").trim();
+    const lastName = String(formData.get("patientLastName") || "").trim();
+    const patientEmail = String(formData.get("patientEmail") || user.email || "")
+      .trim()
+      .toLowerCase();
+    const patientPhone = String(formData.get("patientPhone") || "").trim();
+    const patientDob = String(formData.get("patientDob") || "").trim();
+    const patientGender = String(formData.get("patientGender") || "").trim();
+    const patientAllergies = String(formData.get("patientAllergies") || "NKDA").trim() || "NKDA";
+    const shipLine1 = String(formData.get("shipLine1") || "").trim();
+    const shipLine2 = String(formData.get("shipLine2") || "").trim();
+    const shipCity = String(formData.get("shipCity") || "").trim();
+    const shipState = String(formData.get("shipState") || "")
+      .trim()
+      .toUpperCase()
+      .slice(0, 2);
+    const shipZip = String(formData.get("shipZip") || "").trim();
+
+    const needsPatientForPharmacy = products.some(
+      (p) => p.productClass === "503A" || p.productClass === "503B" || p.rxRequired,
+    );
+    if (needsPatientForPharmacy) {
+      if (!firstName || !lastName) return { error: "Patient first and last name are required for Eventide." };
+      if (!patientEmail.includes("@")) return { error: "A valid patient email is required for Eventide." };
+      if (!patientPhone) return { error: "Patient phone is required for Eventide." };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(patientDob)) return { error: "Patient date of birth is required (YYYY-MM-DD)." };
+      if (!shipLine1 || !shipCity || !shipState || !shipZip) {
+        return { error: "Full shipping address is required so Eventide can create the patient and route the pharmacy." };
+      }
+    }
+
+    const eventidePatient: EventidePatient = {
+      firstName: firstName || user.name.split(/\s+/)[0] || "Patient",
+      lastName: lastName || user.name.split(/\s+/).slice(1).join(" ") || "Unknown",
+      dateOfBirth: patientDob || "1990-01-01",
+      gender: patientGender || undefined,
+      phone: patientPhone || undefined,
+      email: patientEmail || user.email,
+      allergies: patientAllergies,
+      address: {
+        line1: shipLine1 || "Address pending",
+        line2: shipLine2 || undefined,
+        city: shipCity || "City",
+        state: shipState || "FL",
+        zipCode: shipZip || "00000",
+        country: "US",
+      },
+    };
+    const packedPatient = packPatient(eventidePatient);
+    const fullName = `${eventidePatient.firstName} ${eventidePatient.lastName}`.trim();
+    const initials =
+      `${eventidePatient.firstName[0] || ""}${eventidePatient.lastName[0] || ""}`.toUpperCase() || "PT";
+
+    // Upsert practice patient chart — creates when email is new for this org.
+    let clinicalPatientId = items.map((i) => i.clinicalPatientId).find(Boolean) || null;
+    if (patientEmail) {
+      const existing =
+        (clinicalPatientId
+          ? await prisma.clinicalPatient.findFirst({ where: { id: clinicalPatientId, orgId: user.orgId } })
+          : null) ||
+        (await prisma.clinicalPatient.findFirst({
+          where: { orgId: user.orgId, email: { equals: patientEmail, mode: "insensitive" }, kianIntakeId: "" },
+        }));
+      const addressJson = JSON.stringify({
+        line1: eventidePatient.address.line1,
+        line2: eventidePatient.address.line2 || "",
+        city: eventidePatient.address.city,
+        state: eventidePatient.address.state,
+        zipCode: eventidePatient.address.zipCode,
+        country: "US",
+      });
+      if (existing) {
+        const updated = await prisma.clinicalPatient.update({
+          where: { id: existing.id },
+          data: {
+            fullName,
+            email: patientEmail,
+            phone: patientPhone,
+            dateOfBirth: patientDob,
+            gender: patientGender,
+            allergies: patientAllergies,
+            addressJson,
+            sourceSite: "portal-checkout",
+          },
+        });
+        clinicalPatientId = updated.id;
+      } else {
+        const created = await prisma.clinicalPatient.create({
+          data: {
+            orgId: user.orgId,
+            email: patientEmail,
+            fullName,
+            phone: patientPhone,
+            dateOfBirth: patientDob,
+            gender: patientGender,
+            allergies: patientAllergies,
+            addressJson,
+            kianIntakeId: "",
+            sourceSite: "portal-checkout",
+          },
+        });
+        clinicalPatientId = created.id;
+      }
+      await prisma.cartItem.updateMany({
+        where: { userId: user.id },
+        data: { clinicalPatientId, patientInitials: initials },
+      });
+    }
+
     const count = await prisma.order.count();
     const order = await prisma.order.create({
       data: {
@@ -689,7 +798,7 @@ export async function placeOrder(formData: FormData) {
         clinicalPatientId: clinicalPatientId || undefined,
         pharmacyId: eventide?.id,
         invoiceNumber: `WT-2026-${String(count + 1).padStart(4, "0")}`,
-        status: needsEscript && !signatureDataUrl ? "on_hold" : "submitted",
+        status: "submitted",
         paymentStatus,
         paymentToken,
         cardLast4,
@@ -697,10 +806,21 @@ export async function placeOrder(formData: FormData) {
         subtotalCents: subtotal,
         totalCents: subtotal + shipping,
         shipDestination,
-        escriptStatus: needsEscript ? (signatureDataUrl ? "signed" : "pending_signature") : "not_required",
+        escriptStatus: hasLocalEscript ? "signed" : needsEscript ? "eventide_issues" : "not_required",
         source: "portal",
         splitMessage: split.message,
-        shipToJson: JSON.stringify({ destination: shipDestination }),
+        patientJson: packedPatient.patientJson,
+        patientCipher: packedPatient.patientCipher,
+        shipToJson: JSON.stringify({
+          destination: shipDestination,
+          name: fullName,
+          street1: eventidePatient.address.line1,
+          street2: eventidePatient.address.line2 || "",
+          city: eventidePatient.address.city,
+          state: eventidePatient.address.state,
+          zip: eventidePatient.address.zipCode,
+          country: "US",
+        }),
         lines: {
           create: items.map((item) => {
             const product = byId.get(item.productId)!;
@@ -710,8 +830,8 @@ export async function placeOrder(formData: FormData) {
               productClass: product.productClass,
               qty: item.qty,
               unitPriceCents: product.priceCents,
-              patientInitials: item.patientInitials,
-              prescriber: user.credential?.displayName || user.name,
+              patientInitials: initials || item.patientInitials,
+              prescriber: "Eventide / VitaRelay",
               sig: item.sig,
               daysSupply: item.daysSupply,
               strength: product.strength,
@@ -724,7 +844,7 @@ export async function placeOrder(formData: FormData) {
       include: { lines: true },
     });
 
-    if (needsEscript) {
+    if (hasLocalEscript) {
       const { buildLinesSnapshot, buildPatientSnapshot, buildSignedEscriptPayload } = await import("@/lib/escript");
       const { requestClientMeta } = await import("@/lib/auth-security");
       const meta = await requestClientMeta();
@@ -739,7 +859,7 @@ export async function placeOrder(formData: FormData) {
         patient: buildPatientSnapshot(patientRow),
         lines: buildLinesSnapshot(order.lines),
         signatureDataUrl,
-        directions: String(formData.get("directions") || "As directed by prescribing clinician."),
+        directions: String(formData.get("directions") || "As directed by Eventide prescribing clinician."),
         attestationAccepted: true,
         ip: meta.ip,
         ua: meta.ua,
@@ -768,6 +888,13 @@ export async function placeOrder(formData: FormData) {
       });
     }
 
+    if (clinicalPatientId) {
+      await prisma.clinicalPatient.update({
+        where: { id: clinicalPatientId },
+        data: { lastOrderId: order.id },
+      });
+    }
+
     for (const line of order.lines) {
       if (!line.patientInitials) continue;
       const patient = await ensurePatient(user.orgId, line.patientInitials);
@@ -777,9 +904,16 @@ export async function placeOrder(formData: FormData) {
     }
     await prisma.cartItem.deleteMany({ where: { userId: user.id } });
 
-    // Pharmacy forward is best-effort — never crash checkout if Eventide rejects the payload.
-    if (!needsEscript || signatureDataUrl.startsWith("data:image")) {
+    // Always forward to Eventide when patient + lines are ready (Eventide issues the Rx).
+    {
       try {
+        const platformProductIdBySku: Record<string, string> = {};
+        for (const product of products) {
+          const formulary = product.rxcoreFormularyId || "";
+          if (/^[0-9a-f-]{36}$/i.test(formulary)) platformProductIdBySku[product.sku] = formulary;
+          else if (/^[0-9a-f-]{36}$/i.test(product.sku)) platformProductIdBySku[product.sku] = product.sku;
+        }
+
         await openRxcoreOrder({
           orderId: order.id,
           lines: order.lines
@@ -788,6 +922,18 @@ export async function placeOrder(formData: FormData) {
               productClass: line.productClass as "503A",
               patientInitials: line.patientInitials,
             })),
+          prescription: {
+            patient: eventidePatient,
+            shippingMethod: "2_DAY",
+            shippingDestinationType: shipDestination === "PATIENT" ? "patient_direct" : "practice_office",
+            platformProductIdBySku,
+            referringProvider: {
+              externalId: user.orgId.slice(0, 128),
+              name: user.org.legalName || "Wellness Tech practice",
+              kind: "clinic",
+              email: user.email,
+            },
+          },
         });
       } catch (placementError) {
         console.error("pharmacy placement failed", order.id, placementError);

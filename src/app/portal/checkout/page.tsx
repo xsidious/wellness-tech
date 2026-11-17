@@ -1,16 +1,20 @@
 import { CheckoutForm } from "@/components/CheckoutForm";
-import { PageHeader, SectionCard } from "@/components/portal/Workspace";
+import { PageHeader } from "@/components/portal/Workspace";
 import { assertCanSignEscript, buildLinesSnapshot, buildPatientSnapshot } from "@/lib/escript";
 import { requireUser } from "@/lib/guard";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { fulfillmentGroups, isProductClass, requiresEscript, shippingCents } from "@/lib/rules";
+import Link from "next/link";
 
 function paymentsSandboxEnabled() {
   const mode = (process.env.PAYMENTS_MODE || "").trim().toLowerCase();
   if (mode === "live" || mode === "production") return false;
   if (mode === "sandbox") return true;
-  return (process.env.SANDBOX_AUTH || "").trim().toLowerCase() === "true" || (process.env.PAYMENTS_SANDBOX || "true").trim().toLowerCase() !== "false";
+  return (
+    (process.env.SANDBOX_AUTH || "").trim().toLowerCase() === "true" ||
+    (process.env.PAYMENTS_SANDBOX || "true").trim().toLowerCase() !== "false"
+  );
 }
 
 export default async function CheckoutPage() {
@@ -28,10 +32,23 @@ export default async function CheckoutPage() {
   const shipping = shippingCents(products.map((product) => product.storage));
   const sandbox = paymentsSandboxEnabled();
 
+  if (!items.length) {
+    return (
+      <div className="ws-stack">
+        <PageHeader kicker="Commerce" title="Checkout" lede="Your cart is empty." />
+        <Link className="btn btn-accent" href="/portal/catalog">
+          Browse marketplace
+        </Link>
+      </div>
+    );
+  }
+
   const clinicalPatientId = items.map((i) => i.clinicalPatientId).find(Boolean) || null;
   const patient = clinicalPatientId
     ? await prisma.clinicalPatient.findFirst({ where: { id: clinicalPatientId, orgId: user.orgId } })
-    : null;
+    : (await prisma.clinicalPatient.findFirst({
+        where: { orgId: user.orgId, email: { equals: user.email, mode: "insensitive" }, kianIntakeId: "" },
+      }));
 
   const previewLines = buildLinesSnapshot(
     items.map((item) => {
@@ -55,29 +72,31 @@ export default async function CheckoutPage() {
   const gate = needsEscript ? assertCanSignEscript(user) : { ok: true as const };
 
   return (
-    <div className="ws-stack">
+    <div className="ws-stack co-page">
       <PageHeader
         kicker="Commerce"
         title="Checkout"
-        lede={
-          sandbox
-            ? `Sandbox shipping ${money(shipping)}. Invoice total ${money(subtotal + shipping)}.`
-            : `Live payment mode. Shipping ${money(shipping)}. Total ${money(subtotal + shipping)}.`
+        lede={`Send this order to Eventide / VitaRelay · ${money(subtotal + shipping)} total`}
+        actions={
+          <Link className="btn btn-ghost" href="/portal/catalog">
+            Keep shopping
+          </Link>
         }
       />
       {split.message ? <p className="note">{split.message}</p> : null}
-      <SectionCard title={needsEscript ? "Sign prescription & authorize" : "Authorize order"} flush={needsEscript}>
-        <CheckoutForm
-          needsEscript={needsEscript}
-          paymentsSandbox={sandbox}
-          canSign={gate.ok}
-          gateMessage={gate.ok ? undefined : gate.error}
-          signerLabel={user.credential?.displayName || user.name}
-          npi={user.credential?.npi || ""}
-          patient={buildPatientSnapshot(patient)}
-          lines={previewLines}
-        />
-      </SectionCard>
+      <CheckoutForm
+        needsEscript={needsEscript}
+        paymentsSandbox={sandbox}
+        canSign={gate.ok}
+        gateMessage={gate.ok ? undefined : gate.error}
+        signerLabel={user.credential?.displayName || user.name}
+        npi={user.credential?.npi || ""}
+        patient={buildPatientSnapshot(patient)}
+        lines={previewLines}
+        subtotalCents={subtotal}
+        shippingCents={shipping}
+        defaultEmail={user.email}
+      />
     </div>
   );
 }

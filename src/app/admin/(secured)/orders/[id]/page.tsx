@@ -109,7 +109,7 @@ export default async function AdminOrderDetail({
         }
       >
         <p>
-          <b>Order id:</b> {order.rxhereOrderId || "—"}
+          <b>Eventide order:</b> {order.rxhereOrderId || "—"}
         </p>
         <p>
           <b>Tracking:</b>{" "}
