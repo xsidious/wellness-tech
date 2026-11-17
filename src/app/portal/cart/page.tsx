@@ -4,7 +4,7 @@ import {
   PageHeader,
   SectionCard,
 } from "@/components/portal/Workspace";
-import { removeCartItem } from "@/lib/actions";
+import { removeCartItemAndRedirect } from "@/lib/actions";
 import { requireUser } from "@/lib/guard";
 import { money } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
@@ -63,7 +63,7 @@ export default async function CartPage() {
                       <td>{item.qty}</td>
                       <td>{money((product?.priceCents || 0) * item.qty)}</td>
                       <td>
-                        <form action={removeCartItem}>
+                        <form action={removeCartItemAndRedirect}>
                           <input type="hidden" name="id" value={item.id} />
                           <button className="btn btn-ghost" type="submit">
                             Remove

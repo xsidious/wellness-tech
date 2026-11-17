@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { addToCart } from "@/lib/actions";
+import { addToCartAndRedirect } from "@/lib/actions";
 import { requireUser } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 
@@ -15,7 +15,7 @@ export default async function EducationItem({ params }: { params: Promise<{ slug
       <h1>{item.title}</h1>
       <p>{item.body}</p>
       {product ? (
-        <form action={addToCart} className="form">
+        <form action={addToCartAndRedirect} className="form">
           <input type="hidden" name="productId" value={product.id} />
           <input type="hidden" name="qty" value="1" />
           <label>Patient initials for review<input name="initials" placeholder="A.B." required /></label>

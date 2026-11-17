@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { removeCartItem } from "@/lib/actions";
 import { money } from "@/lib/money";
+import { OPEN_CATALOG_SIDE_CART } from "@/components/portal/catalog-cart-events";
 
 export type SideCartLine = {
   id: string;
@@ -26,12 +28,31 @@ export function CatalogSideCart({
   shippingCents: number;
   initialOpen?: boolean;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(initialOpen);
+  const [pending, startTransition] = useTransition();
   const count = lines.reduce((sum, line) => sum + line.qty, 0);
 
   useEffect(() => {
     if (initialOpen) setOpen(true);
   }, [initialOpen, lines.length]);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("wt-open-catalog-cart") === "1") {
+        sessionStorage.removeItem("wt-open-catalog-cart");
+        setOpen(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    const openCart = () => setOpen(true);
+    window.addEventListener(OPEN_CATALOG_SIDE_CART, openCart);
+    return () => window.removeEventListener(OPEN_CATALOG_SIDE_CART, openCart);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +62,15 @@ export function CatalogSideCart({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  function onRemove(id: string) {
+    const formData = new FormData();
+    formData.set("id", id);
+    startTransition(async () => {
+      const result = await removeCartItem(formData);
+      if (result.ok) router.refresh();
+    });
+  }
 
   return (
     <>
@@ -84,13 +114,14 @@ export function CatalogSideCart({
                       </span>
                       <span className="mk-sidecart-price">{money(line.priceCents * line.qty)}</span>
                     </div>
-                    <form action={removeCartItem}>
-                      <input type="hidden" name="id" value={line.id} />
-                      <input type="hidden" name="returnTo" value="/portal/catalog?cart=1" />
-                      <button className="btn btn-ghost mk-sidecart-remove" type="submit">
-                        Remove
-                      </button>
-                    </form>
+                    <button
+                      className="btn btn-ghost mk-sidecart-remove"
+                      type="button"
+                      disabled={pending}
+                      onClick={() => onRemove(line.id)}
+                    >
+                      Remove
+                    </button>
                   </li>
                 ))}
               </ul>

@@ -479,19 +479,20 @@ function initialsFromName(name: string) {
   return `${parts[0][0] || ""}.${parts[parts.length - 1][0] || ""}.`.toUpperCase();
 }
 
-export async function addToCart(formData: FormData) {
+/** Soft add — no redirect. Catalog UI refreshes in place and opens the side cart. */
+export async function addToCart(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
   const userId = await readUserId();
-  if (!userId) redirect("/login");
+  if (!userId) return { ok: false, error: "Please sign in." };
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { org: true } });
-  if (!user) redirect("/login");
+  if (!user) return { ok: false, error: "Please sign in." };
   const product = await prisma.product.findUnique({ where: { id: String(formData.get("productId") || "") } });
-  if (!product || !product.active) redirect("/portal/catalog?error=Unknown+product");
+  if (!product || !product.active) return { ok: false, error: "Unknown product." };
   const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
     sku: product.sku,
     category: product.category,
     rxcoreFormularyId: product.rxcoreFormularyId,
   });
-  if (!gate.ok) redirect(`/portal/catalog?error=${encodeURIComponent(gate.reason || "Cannot add")}`);
+  if (!gate.ok) return { ok: false, error: gate.reason || "Cannot add to cart." };
 
   const patientId = String(formData.get("clinicalPatientId") || "").trim();
   let clinicalPatientId = "";
@@ -523,12 +524,12 @@ export async function addToCart(formData: FormData) {
       const patient = await prisma.clinicalPatient.findFirst({
         where: { id: patientId, orgId: user.orgId },
       });
-      if (!patient) redirect("/portal/catalog?error=Choose+a+patient+on+your+practice");
+      if (!patient) return { ok: false, error: "Choose a patient on your practice." };
       clinicalPatientId = patient.id;
       initials = initialsFromName(patient.fullName) || initials;
     }
     if (initials.length < 2) {
-      redirect("/portal/catalog?error=Choose+a+patient+(Myself+works)");
+      return { ok: false, error: "Choose a patient (Myself works)." };
     }
   }
 
@@ -543,6 +544,15 @@ export async function addToCart(formData: FormData) {
       daysSupply: Math.max(0, Number(formData.get("daysSupply") || (product.rxRequired ? 30 : 0))),
     },
   });
+  return { ok: true };
+}
+
+/** Legacy form posts that still expect a redirect (e.g. education pages). */
+export async function addToCartAndRedirect(formData: FormData) {
+  const result = await addToCart(formData);
+  if (!result.ok) {
+    redirect(`/portal/catalog?error=${encodeURIComponent(result.error)}`);
+  }
   redirect(safePortalReturn(formData.get("returnTo"), "/portal/catalog?cart=1"));
 }
 
@@ -562,10 +572,16 @@ function safePortalReturn(raw: FormDataEntryValue | null, fallback: string) {
   }
 }
 
-export async function removeCartItem(formData: FormData) {
+export async function removeCartItem(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
   const userId = await readUserId();
-  if (!userId) redirect("/login");
+  if (!userId) return { ok: false, error: "Please sign in." };
   await prisma.cartItem.deleteMany({ where: { id: String(formData.get("id") || ""), userId } });
+  return { ok: true };
+}
+
+export async function removeCartItemAndRedirect(formData: FormData) {
+  const result = await removeCartItem(formData);
+  if (!result.ok) redirect("/login");
   redirect(safePortalReturn(formData.get("returnTo"), "/portal/cart"));
 }
 
