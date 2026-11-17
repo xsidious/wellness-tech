@@ -5,6 +5,15 @@ import { EscriptSigningPanel } from "@/components/escript/EscriptSigningPanel";
 import { placeOrder } from "@/lib/actions";
 import type { EscriptLineSnapshot, EscriptPatientSnapshot } from "@/lib/escript-shared";
 
+function isNextRedirect(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    String((error as { digest?: string }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
+
 export function CheckoutForm({
   needsEscript = false,
   paymentsSandbox = true,
@@ -27,14 +36,24 @@ export function CheckoutForm({
   const [last4, setLast4] = useState("");
   const [shipDestination, setShipDestination] = useState<"PRACTICE" | "PATIENT">("PRACTICE");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
   return (
     <form
       className="form escript-checkout"
       action={async (formData) => {
+        setError("");
+        setPending(true);
         formData.set("shipDestination", shipDestination);
-        const result = await placeOrder(formData);
-        if (result?.error) setError(result.error);
+        try {
+          const result = await placeOrder(formData);
+          if (result?.error) setError(result.error);
+        } catch (err) {
+          if (isNextRedirect(err)) throw err;
+          setError(err instanceof Error ? err.message : "Could not place the order.");
+        } finally {
+          setPending(false);
+        }
       }}
     >
       <fieldset className="stack" style={{ border: "none", padding: 0, margin: "0 0 18px" }}>
@@ -79,11 +98,11 @@ export function CheckoutForm({
         {paymentsSandbox ? (
           <>
             <label className="escript-field">
-              <span>Card number</span>
+              <span>Card number (sandbox)</span>
               <input
                 inputMode="numeric"
                 autoComplete="off"
-                placeholder="Sandbox — digits stay in the browser"
+                placeholder="Any test card — only last 4 are stored"
                 onChange={(event) => {
                   const digits = event.target.value.replace(/\D/g, "");
                   setLast4(digits.slice(-4));
@@ -91,7 +110,7 @@ export function CheckoutForm({
               />
             </label>
             <input type="hidden" name="last4" value={last4} />
-            <p className="muted">Only the last four digits leave this page. Demo payments use PAYMENTS_MODE=sandbox.</p>
+            <p className="muted">Only the last four digits leave this page. Demo payments use sandbox mode.</p>
           </>
         ) : (
           <>
@@ -115,8 +134,17 @@ export function CheckoutForm({
       </section>
 
       {error ? <p className="error">{error}</p> : null}
-      <button className="btn btn-accent escript-submit" type="submit" disabled={needsEscript && !canSign} style={{ marginTop: 16 }}>
-        {needsEscript ? "Sign eScript & submit order" : "Authorize & submit"}
+      <button
+        className="btn btn-accent escript-submit"
+        type="submit"
+        disabled={pending || (needsEscript && !canSign)}
+        style={{ marginTop: 16 }}
+      >
+        {pending
+          ? "Submitting…"
+          : needsEscript
+            ? "Sign eScript & submit order"
+            : "Authorize & submit"}
       </button>
     </form>
   );

@@ -317,15 +317,19 @@ export async function signEscript(formData: FormData) {
     /* roster sync is best-effort; placement still carries DEA/NPI inline */
   }
 
-  await openRxcoreOrder({
-    orderId: order.id,
-    lines: order.lines
-      .filter((line) => isProductClass(line.productClass))
-      .map((line) => ({
-        productClass: line.productClass as "503A",
-        patientInitials: line.patientInitials,
-      })),
-  });
+  try {
+    await openRxcoreOrder({
+      orderId: order.id,
+      lines: order.lines
+        .filter((line) => isProductClass(line.productClass))
+        .map((line) => ({
+          productClass: line.productClass as "503A",
+          patientInitials: line.patientInitials,
+        })),
+    });
+  } catch (error) {
+    console.error("escript pharmacy forward failed", order.id, error);
+  }
 
   await audit({
     actorId: user.id,

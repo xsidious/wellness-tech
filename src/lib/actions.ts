@@ -565,219 +565,274 @@ export async function removeCartItem(formData: FormData) {
   redirect(safePortalReturn(formData.get("returnTo"), "/portal/cart"));
 }
 
+function isNextRedirect(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    String((error as { digest?: string }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
+
 export async function placeOrder(formData: FormData) {
-  const userId = await readUserId();
-  if (!userId) redirect("/login");
-  const user = await prisma.user.findUnique({ where: { id: userId }, include: { org: true, credential: true } });
-  if (!user) redirect("/login");
+  try {
+    const userId = await readUserId();
+    if (!userId) redirect("/login");
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { org: true, credential: true } });
+    if (!user) redirect("/login");
 
-  const shipDestination = String(formData.get("shipDestination") || "PRACTICE").toUpperCase() === "PATIENT" ? "PATIENT" : "PRACTICE";
-  const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
-  const opaqueToken = String(formData.get("paymentNonce") || formData.get("opaqueDataValue") || "").trim();
-  const rawLast4 = String(formData.get("last4") || "");
-  const cardField = String(formData.get("card") || "");
-  if (rejectCardNumber(rawLast4) || rejectCardNumber(cardField)) {
-    return { error: "Send only the last four digits. Full card numbers are refused." };
-  }
-
-  const sandboxPay = paymentsSandboxEnabled();
-  let paymentToken = "";
-  let cardLast4 = "";
-  let paymentStatus = "authorized";
-
-  if (sandboxPay) {
-    try {
-      const payment = tokenizeLast4(rawLast4 || "4242");
-      paymentToken = payment.token;
-      cardLast4 = payment.last4;
-      paymentStatus = "authorized";
-    } catch {
-      return { error: "Enter the last four digits of the saved card." };
+    const shipDestination =
+      String(formData.get("shipDestination") || "PRACTICE").toUpperCase() === "PATIENT" ? "PATIENT" : "PRACTICE";
+    const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
+    const opaqueToken = String(formData.get("paymentNonce") || formData.get("opaqueDataValue") || "").trim();
+    const rawLast4 = String(formData.get("last4") || "").replace(/\D/g, "").slice(-4);
+    const cardField = String(formData.get("card") || "");
+    if (rejectCardNumber(rawLast4) || rejectCardNumber(cardField)) {
+      return { error: "Send only the last four digits. Full card numbers are refused." };
     }
-  } else {
-    if (!opaqueToken) {
-      return { error: "Live payments require a gateway nonce. Set PAYMENTS_MODE=sandbox for demos." };
+
+    const sandboxPay = paymentsSandboxEnabled();
+    let paymentToken = "";
+    let cardLast4 = "";
+    let paymentStatus = "authorized";
+
+    if (sandboxPay) {
+      try {
+        const payment = tokenizeLast4(rawLast4 || "4242");
+        paymentToken = payment.token;
+        cardLast4 = payment.last4;
+        paymentStatus = "authorized";
+      } catch {
+        return { error: "Enter the last four digits of the card." };
+      }
+    } else {
+      if (!opaqueToken) {
+        return { error: "Live payments require a gateway nonce. Set PAYMENTS_MODE=sandbox for demos." };
+      }
+      if (rejectCardNumber(opaqueToken)) {
+        return { error: "Do not paste a full card number. Use the payment gateway nonce, or enable sandbox mode." };
+      }
+      paymentToken = `live_${opaqueToken.slice(0, 48)}`;
+      cardLast4 = rawLast4 || "****";
+      paymentStatus = "paid";
     }
-    paymentToken = `live_${opaqueToken.slice(0, 48)}`;
-    cardLast4 = rawLast4.replace(/\D/g, "").slice(-4) || "****";
-    paymentStatus = "paid";
-  }
 
-  const items = await prisma.cartItem.findMany({ where: { userId: user.id } });
-  if (!items.length) return { error: "The cart is empty." };
-  const products = await prisma.product.findMany({ where: { id: { in: items.map((item) => item.productId) } } });
-  const byId = new Map(products.map((product) => [product.id, product]));
-  const hasVerifiedPrescriber = Boolean(user.credential && user.credential.verificationTier >= 1);
-  const classes = [];
-  let subtotal = 0;
-  let needsEscript = false;
-  for (const item of items) {
-    const product = byId.get(item.productId);
-    if (!product || !product.active) return { error: "A cart line is no longer available." };
-    const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
-      hasVerifiedPrescriber: product.productClass === "503A" || product.productClass === "503B" ? hasVerifiedPrescriber : undefined,
-    });
-    if (!gate.ok) return { error: gate.reason };
-    if (product.rxRequired && item.patientInitials.trim().length < 2) {
-      return { error: "Each prescription line needs patient initials." };
+    const items = await prisma.cartItem.findMany({ where: { userId: user.id } });
+    if (!items.length) return { error: "The cart is empty." };
+    const products = await prisma.product.findMany({ where: { id: { in: items.map((item) => item.productId) } } });
+    const byId = new Map(products.map((product) => [product.id, product]));
+    const hasVerifiedPrescriber = Boolean(user.credential && user.credential.verificationTier >= 1);
+    const classes = [];
+    let subtotal = 0;
+    let needsEscript = false;
+    for (const item of items) {
+      const product = byId.get(item.productId);
+      if (!product || !product.active) return { error: "A cart line is no longer available." };
+      const gate = canOrder(user.org.verificationTier, product.productClass, product.orderable, {
+        hasVerifiedPrescriber:
+          product.productClass === "503A" || product.productClass === "503B" ? hasVerifiedPrescriber : undefined,
+      });
+      if (!gate.ok) return { error: gate.reason };
+      if (product.rxRequired && item.patientInitials.trim().length < 2) {
+        return { error: "Each prescription line needs patient initials." };
+      }
+      if (requiresEscript(product.productClass, product.rxRequired)) needsEscript = true;
+      classes.push(product.productClass);
+      subtotal += product.priceCents * item.qty;
     }
-    if (requiresEscript(product.productClass, product.rxRequired)) needsEscript = true;
-    classes.push(product.productClass);
-    subtotal += product.priceCents * item.qty;
-  }
 
-  if (needsEscript && !signatureDataUrl.startsWith("data:image")) {
-    return { error: "503A/503B lines require a signed eScript before the order can go to pharmacy." };
-  }
-  if (needsEscript) {
-    const { assertCanSignEscript } = await import("@/lib/escript");
-    const gate = assertCanSignEscript(user);
-    if (!gate.ok) return { error: gate.error };
-    if (formData.get("attestationAccepted") !== "1" && formData.get("attestationAccepted") !== "on") {
-      return { error: "Confirm the prescribing attestation before signing." };
+    if (needsEscript && !signatureDataUrl.startsWith("data:image")) {
+      return { error: "503A/503B lines require a signed eScript before the order can go to pharmacy." };
     }
-  }
-
-  const split = fulfillmentGroups(classes);
-  const shipping = shippingCents(products.map((product) => product.storage));
-  const pharmacies = await ensurePharmacyNetwork();
-  const eventide = pharmacies.find((p) => /eventide/i.test(p.name)) || pharmacies[0];
-  const clinicalPatientId = items.map((i) => i.clinicalPatientId).find(Boolean) || null;
-  const count = await prisma.order.count();
-  const order = await prisma.order.create({
-    data: {
-      orgId: user.orgId,
-      placedById: user.id,
-      clinicalPatientId: clinicalPatientId || undefined,
-      pharmacyId: eventide?.id,
-      invoiceNumber: `WT-2026-${String(count + 1).padStart(4, "0")}`,
-      status: needsEscript && !signatureDataUrl ? "on_hold" : "submitted",
-      paymentStatus,
-      paymentToken,
-      cardLast4,
-      shippingFeeCents: shipping,
-      subtotalCents: subtotal,
-      totalCents: subtotal + shipping,
-      shipDestination,
-      escriptStatus: needsEscript ? (signatureDataUrl ? "signed" : "pending_signature") : "not_required",
-      source: "portal",
-      splitMessage: split.message,
-      shipToJson: JSON.stringify({ destination: shipDestination }),
-      lines: {
-        create: items.map((item) => {
-          const product = byId.get(item.productId)!;
-          return {
-            sku: product.sku,
-            name: product.name,
-            productClass: product.productClass,
-            qty: item.qty,
-            unitPriceCents: product.priceCents,
-            patientInitials: item.patientInitials,
-            prescriber: user.credential?.displayName || user.name,
-            sig: item.sig,
-            daysSupply: item.daysSupply,
-            strength: product.strength,
-            size: product.size,
-            dosageForm: product.form,
-          };
-        }),
-      },
-    },
-    include: { lines: true },
-  });
-
-  if (needsEscript) {
-    const {
-      buildLinesSnapshot,
-      buildPatientSnapshot,
-      buildSignedEscriptPayload,
-    } = await import("@/lib/escript");
-    const { requestClientMeta } = await import("@/lib/auth-security");
-    const meta = await requestClientMeta();
-    const patientRow = clinicalPatientId
-      ? await prisma.clinicalPatient.findUnique({ where: { id: clinicalPatientId } })
-      : null;
-    const signed = buildSignedEscriptPayload({
-      user,
-      orderId: order.id,
-      invoiceNumber: order.invoiceNumber,
-      clinicalPatientId,
-      patient: buildPatientSnapshot(patientRow),
-      lines: buildLinesSnapshot(order.lines),
-      signatureDataUrl,
-      directions: String(formData.get("directions") || "As directed by prescribing clinician."),
-      attestationAccepted: true,
-      ip: meta.ip,
-      ua: meta.ua,
-      licenseState: String(formData.get("licenseState") || ""),
-    });
-    if (!signed.ok) return { error: signed.error };
-    await prisma.eScript.create({
-      data: {
-        orderId: order.id,
-        ...signed.data,
-        clinicalPatientId: clinicalPatientId || undefined,
-      },
-    });
-    await audit({
-      actorId: user.id,
-      action: "escript.signed",
-      object: order.id,
-      after: signed.data.contentHash,
-      ip: meta.ip,
-    });
-  }
-
-  for (const line of order.lines) {
-    if (!line.patientInitials) continue;
-    const patient = await ensurePatient(user.orgId, line.patientInitials);
-    if (patient) {
-      await prisma.orderLine.update({ where: { id: line.id }, data: { rxcorePatientId: patient.rxcorePatientId } });
+    if (needsEscript) {
+      const { assertCanSignEscript } = await import("@/lib/escript");
+      const gate = assertCanSignEscript(user);
+      if (!gate.ok) return { error: gate.error };
+      if (formData.get("attestationAccepted") !== "1" && formData.get("attestationAccepted") !== "on") {
+        return { error: "Confirm the prescribing attestation before signing." };
+      }
     }
-  }
-  await prisma.cartItem.deleteMany({ where: { userId: user.id } });
 
-  // Block pharmacy forward until eScript is signed for Rx classes
-  if (!needsEscript || signatureDataUrl.startsWith("data:image")) {
-    await openRxcoreOrder({
-      orderId: order.id,
-      lines: order.lines.filter((line) => isProductClass(line.productClass)).map((line) => ({
-        productClass: line.productClass as "503A",
-        patientInitials: line.patientInitials,
-      })),
-    });
-  }
-
-  // Draft refill reminders from days supply
-  for (const line of order.lines) {
-    if (!line.daysSupply || line.daysSupply < 7 || !line.patientInitials) continue;
-    const due = new Date();
-    due.setDate(due.getDate() + Math.max(7, line.daysSupply - 7));
-    await prisma.refill.create({
+    const split = fulfillmentGroups(classes);
+    const shipping = shippingCents(products.map((product) => product.storage));
+    const pharmacies = await ensurePharmacyNetwork();
+    const eventide = pharmacies.find((p) => /eventide/i.test(p.name)) || pharmacies[0];
+    const clinicalPatientId = items.map((i) => i.clinicalPatientId).find(Boolean) || null;
+    const count = await prisma.order.count();
+    const order = await prisma.order.create({
       data: {
         orgId: user.orgId,
-        patientInitials: line.patientInitials,
-        productName: line.name,
-        productSku: line.sku,
-        dueAt: due,
-        daysSupply: line.daysSupply,
-        status: "due",
-        autopay: Boolean(paymentToken),
+        placedById: user.id,
+        clinicalPatientId: clinicalPatientId || undefined,
+        pharmacyId: eventide?.id,
+        invoiceNumber: `WT-2026-${String(count + 1).padStart(4, "0")}`,
+        status: needsEscript && !signatureDataUrl ? "on_hold" : "submitted",
+        paymentStatus,
+        paymentToken,
+        cardLast4,
+        shippingFeeCents: shipping,
+        subtotalCents: subtotal,
+        totalCents: subtotal + shipping,
+        shipDestination,
+        escriptStatus: needsEscript ? (signatureDataUrl ? "signed" : "pending_signature") : "not_required",
+        source: "portal",
+        splitMessage: split.message,
+        shipToJson: JSON.stringify({ destination: shipDestination }),
+        lines: {
+          create: items.map((item) => {
+            const product = byId.get(item.productId)!;
+            return {
+              sku: product.sku,
+              name: product.name,
+              productClass: product.productClass,
+              qty: item.qty,
+              unitPriceCents: product.priceCents,
+              patientInitials: item.patientInitials,
+              prescriber: user.credential?.displayName || user.name,
+              sig: item.sig,
+              daysSupply: item.daysSupply,
+              strength: product.strength,
+              size: product.size,
+              dosageForm: product.form,
+            };
+          }),
+        },
       },
+      include: { lines: true },
     });
-  }
 
-  await audit({ actorId: user.id, action: "order.placed", object: order.invoiceNumber, after: `ship:${shipDestination};escript:${order.escriptStatus}` });
-  const { notifyOrg } = await import("@/lib/notifications");
-  await notifyOrg({
-    orgId: user.orgId,
-    kind: "order.placed",
-    title: `Order ${order.invoiceNumber} placed`,
-    body: order.escriptStatus === "pending_signature" ? "Awaiting eScript signature." : `Status: ${order.status}`,
-    href: `/portal/orders/${order.id}`,
-    email: true,
-  });
-  redirect(`/portal/orders/${order.id}`);
+    if (needsEscript) {
+      const { buildLinesSnapshot, buildPatientSnapshot, buildSignedEscriptPayload } = await import("@/lib/escript");
+      const { requestClientMeta } = await import("@/lib/auth-security");
+      const meta = await requestClientMeta();
+      const patientRow = clinicalPatientId
+        ? await prisma.clinicalPatient.findUnique({ where: { id: clinicalPatientId } })
+        : null;
+      const signed = buildSignedEscriptPayload({
+        user,
+        orderId: order.id,
+        invoiceNumber: order.invoiceNumber,
+        clinicalPatientId,
+        patient: buildPatientSnapshot(patientRow),
+        lines: buildLinesSnapshot(order.lines),
+        signatureDataUrl,
+        directions: String(formData.get("directions") || "As directed by prescribing clinician."),
+        attestationAccepted: true,
+        ip: meta.ip,
+        ua: meta.ua,
+        licenseState: String(formData.get("licenseState") || ""),
+      });
+      if (!signed.ok) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: "on_hold", placementError: signed.error, splitMessage: signed.error },
+        });
+        return { error: signed.error };
+      }
+      await prisma.eScript.create({
+        data: {
+          orderId: order.id,
+          ...signed.data,
+          clinicalPatientId: clinicalPatientId || undefined,
+        },
+      });
+      await audit({
+        actorId: user.id,
+        action: "escript.signed",
+        object: order.id,
+        after: signed.data.contentHash,
+        ip: meta.ip,
+      });
+    }
+
+    for (const line of order.lines) {
+      if (!line.patientInitials) continue;
+      const patient = await ensurePatient(user.orgId, line.patientInitials);
+      if (patient) {
+        await prisma.orderLine.update({ where: { id: line.id }, data: { rxcorePatientId: patient.rxcorePatientId } });
+      }
+    }
+    await prisma.cartItem.deleteMany({ where: { userId: user.id } });
+
+    // Pharmacy forward is best-effort — never crash checkout if Eventide rejects the payload.
+    if (!needsEscript || signatureDataUrl.startsWith("data:image")) {
+      try {
+        await openRxcoreOrder({
+          orderId: order.id,
+          lines: order.lines
+            .filter((line) => isProductClass(line.productClass))
+            .map((line) => ({
+              productClass: line.productClass as "503A",
+              patientInitials: line.patientInitials,
+            })),
+        });
+      } catch (placementError) {
+        console.error("pharmacy placement failed", order.id, placementError);
+        const message =
+          placementError instanceof Error
+            ? placementError.message.slice(0, 500)
+            : "Pharmacy placement failed. Order saved on hold.";
+        await prisma.order
+          .update({
+            where: { id: order.id },
+            data: { status: "on_hold", placementError: message, splitMessage: message },
+          })
+          .catch(() => null);
+      }
+    }
+
+    for (const line of order.lines) {
+      if (!line.daysSupply || line.daysSupply < 7 || !line.patientInitials) continue;
+      const due = new Date();
+      due.setDate(due.getDate() + Math.max(7, line.daysSupply - 7));
+      await prisma.refill.create({
+        data: {
+          orgId: user.orgId,
+          patientInitials: line.patientInitials,
+          productName: line.name,
+          productSku: line.sku,
+          dueAt: due,
+          daysSupply: line.daysSupply,
+          status: "due",
+          autopay: Boolean(paymentToken),
+        },
+      });
+    }
+
+    await audit({
+      actorId: user.id,
+      action: "order.placed",
+      object: order.invoiceNumber,
+      after: `ship:${shipDestination};escript:${order.escriptStatus}`,
+    });
+    try {
+      const { notifyOrg } = await import("@/lib/notifications");
+      await notifyOrg({
+        orgId: user.orgId,
+        kind: "order.placed",
+        title: `Order ${order.invoiceNumber} placed`,
+        body:
+          order.escriptStatus === "pending_signature"
+            ? "Awaiting eScript signature."
+            : `Status: ${order.status}`,
+        href: `/portal/orders/${order.id}`,
+        email: true,
+      });
+    } catch (notifyError) {
+      console.error("order placed notification failed", notifyError);
+    }
+    redirect(`/portal/orders/${order.id}`);
+  } catch (error) {
+    if (isNextRedirect(error)) throw error;
+    console.error("placeOrder failed", error);
+    const message = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "";
+    return {
+      error:
+        message && !/prisma|postgres|secret|credential|database|connect/i.test(message)
+          ? message.slice(0, 220)
+          : "Could not place the order. Check cart lines and try again.",
+    };
+  }
 }
 
 export async function advanceOrder(formData: FormData) {

@@ -241,7 +241,7 @@ export async function openRxcoreOrder(input: {
     where: { id: input.orderId },
     include: { lines: true, placedBy: { include: { credential: true } } },
   });
-  if (!order) throw new Error("Order not found.");
+  if (!order) return null;
 
   for (const line of input.lines) {
     await prisma.orderLine.updateMany({
@@ -352,7 +352,7 @@ export async function openRxcoreOrder(input: {
           where: { id: order.id },
           data: { status: "on_hold", splitMessage: placed.error, placementError: placed.error },
         });
-        throw new Error(placed.error);
+        return null;
       }
       const { pharmacyPaymentMessage } = await import("@/lib/eventide");
       const payNote = pharmacyPaymentMessage(placed.status);
@@ -393,7 +393,7 @@ export async function openRxcoreOrder(input: {
         splitMessage: "Missing patient details required to place with VitaRelay.",
       },
     });
-    throw new Error("Missing patient details required to place with VitaRelay.");
+    return null;
   }
 
   // Rx lines without a live VitaRelay key must not look fulfilled in production.
@@ -405,7 +405,7 @@ export async function openRxcoreOrder(input: {
         where: { id: order.id },
         data: { status: "on_hold", placementError: message, splitMessage: message },
       });
-      throw new Error(message);
+      return null;
     }
   }
 
