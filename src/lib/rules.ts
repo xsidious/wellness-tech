@@ -54,6 +54,19 @@ export function hasVitaRelayCatalogMatch(input: {
   return VITARELAY_UUID.test(String(input.sku || "")) || VITARELAY_UUID.test(String(input.rxcoreFormularyId || ""));
 }
 
+/**
+ * Lines that must be placed on VitaRelay/Eventide (patient + pharmacy).
+ * Includes RND — Eventide marks many peptides/RUO SKUs as RND but they still fulfill through Practice API.
+ */
+export function isEventidePlacementClass(productClass: string) {
+  return productClass === "503A" || productClass === "503B" || productClass === "RND";
+}
+
+/** Fake local-only pharmacy ids — never exist on VitaRelay. */
+export function isSandboxPharmacyOrderId(id?: string | null) {
+  return /^EVT-[0-9A-F]{6,}$/i.test(String(id || "").trim());
+}
+
 export function canOrder(
   _tier: number,
   _productClass: ProductClass | string,

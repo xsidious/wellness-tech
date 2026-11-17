@@ -845,10 +845,9 @@ export async function placePrescriptionOrder(input: PlacePrescriptionInput) {
       postal_code: input.patient.address.zipCode,
       country: (input.patient.address.country || "US").slice(0, 2).toUpperCase(),
     },
+    // VitaRelay Practice API rejects unrecognized keys like `id` on prescriber —
+    // identify the physician by NPI + license only (roster id stays local for audit).
     prescriber: {
-      ...(input.prescriber?.eventidePrescriberId
-        ? { id: input.prescriber.eventidePrescriberId }
-        : {}),
       full_name: fullName,
       npi_number: npi,
       licenses: [{ state: licenseState, number: licenseNumber }],
@@ -1303,6 +1302,14 @@ export async function refreshOrderFromEventide(orderId: string) {
   if (!order) return { ok: false as const, error: "Order not found." };
   const remoteId = order.rxhereOrderId || order.rxcoreOrderId;
   if (!remoteId) return { ok: false as const, error: "No VitaRelay order id on this order yet." };
+  // Local sandbox ids were minted when RND/non-503 lines skipped Practice API placement.
+  if (/^EVT-[0-9A-F]{6,}$/i.test(remoteId.trim())) {
+    return {
+      ok: false as const,
+      error:
+        "This order only has a local sandbox pharmacy id (never sent to VitaRelay). Use Retry Eventide placement.",
+    };
+  }
 
   const result = await getOrderStatus(remoteId);
   if (!result.ok) {

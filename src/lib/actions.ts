@@ -700,7 +700,11 @@ export async function placeOrder(formData: FormData) {
     const shipZip = String(formData.get("shipZip") || "").trim();
 
     const needsPatientForPharmacy = products.some(
-      (p) => p.productClass === "503A" || p.productClass === "503B" || p.rxRequired,
+      (p) =>
+        p.productClass === "503A" ||
+        p.productClass === "503B" ||
+        p.productClass === "RND" ||
+        p.rxRequired,
     );
     if (needsPatientForPharmacy) {
       if (!firstName || !lastName) return { error: "Patient first and last name are required for Eventide." };

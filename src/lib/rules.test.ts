@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { canAdminOrder, canOrder, commissionCents, fulfillmentGroups } from "./rules";
+import {
+  canAdminOrder,
+  canOrder,
+  commissionCents,
+  fulfillmentGroups,
+  isEventidePlacementClass,
+  isSandboxPharmacyOrderId,
+} from "./rules";
 
 describe("catalog gates", () => {
   it("lets any orderable SKU through the marketplace", () => {
@@ -60,5 +67,16 @@ describe("checkout split", () => {
     const split = fulfillmentGroups(["503A", "503B", "supply"]);
     assert.equal(split.groups.length, 3);
     assert.match(split.message, /one invoice/);
+  });
+});
+
+describe("Eventide placement classes", () => {
+  it("includes RND so VitaRelay R&D/RUO SKUs actually place", () => {
+    assert.equal(isEventidePlacementClass("503A"), true);
+    assert.equal(isEventidePlacementClass("503B"), true);
+    assert.equal(isEventidePlacementClass("RND"), true);
+    assert.equal(isEventidePlacementClass("supply"), false);
+    assert.equal(isSandboxPharmacyOrderId("EVT-288D03A2"), true);
+    assert.equal(isSandboxPharmacyOrderId("cmwkrnuzr0005l208iahd2se5"), false);
   });
 });

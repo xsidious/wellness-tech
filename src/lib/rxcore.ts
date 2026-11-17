@@ -2,7 +2,16 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ensurePharmacyNetwork } from "@/lib/ensure-pharmacies";
-import { canOrder, commissionCents, isProductClass, routeSource, shippingCents, type ProductClass } from "@/lib/rules";
+import {
+  canOrder,
+  commissionCents,
+  isEventidePlacementClass,
+  isProductClass,
+  isSandboxPharmacyOrderId,
+  routeSource,
+  shippingCents,
+  type ProductClass,
+} from "@/lib/rules";
 import { signWebhook, verifyWebhook } from "@/lib/crypto";
 import {
   eventideConfigured,
@@ -255,7 +264,8 @@ export async function openRxcoreOrder(input: {
     });
   }
 
-  const rxLines = order.lines.filter((line) => line.productClass === "503A" || line.productClass === "503B");
+  // 503A/503B + RND (Eventide R&D / RUO catalog) all place through VitaRelay Practice API.
+  const rxLines = order.lines.filter((line) => isEventidePlacementClass(line.productClass));
   if (eventideConfigured() && rxLines.length) {
     let prescription = input.prescription;
     if (!prescription?.patient) {
@@ -331,14 +341,20 @@ export async function openRxcoreOrder(input: {
           ].join("\n"),
         });
         if (!requested.ok) {
+          const ownInState = await resolveEventideIssuePlan({ state: prescription.patient.address.state });
+          const detail =
+            requested.error +
+            (ownInState.ok && ownInState.mode === "own"
+              ? ""
+              : ` Eventide has no own licensed MD for ${prescription.patient.address.state || "this state"} — ship/patient state must match an Eventide roster license (currently FL) until distributor script-requests are enabled.`);
           await prisma.order.update({
             where: { id: order.id },
             data: {
               status: "on_hold",
               escriptStatus: "pending_eventide_network",
               pharmacyId: eventidePharmacy?.id || undefined,
-              placementError: requested.error,
-              splitMessage: requested.error,
+              placementError: detail,
+              splitMessage: detail,
               prescriberJson: JSON.stringify({
                 mode: "network",
                 eventideRoute: plan.route,
@@ -381,6 +397,17 @@ export async function openRxcoreOrder(input: {
       }
 
       const prescriber = plan.prescriber;
+      if (!prescriber) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "on_hold",
+            placementError: "No Eventide issuing physician available for this patient state.",
+            splitMessage: "No Eventide issuing physician available for this patient state.",
+          },
+        });
+        return null;
+      }
       if (eventidePharmacy) {
         await prisma.order.update({
           where: { id: order.id },
@@ -455,7 +482,19 @@ export async function openRxcoreOrder(input: {
         },
       });
       await audit({ action: "eventide.order_opened", object: order.id, after: placed.orderId });
-      await emitOrderEvent(order.id, "order.received");
+      // Do not emit order.received — that would overwrite awaiting_payment/submitted with "received".
+      await prisma.orderEvent.create({
+        data: {
+          orderId: order.id,
+          eventId: `evt_place_${randomBytes(8).toString("hex")}`,
+          type: "eventide.placed",
+          payload: JSON.stringify({
+            orderId: placed.orderId,
+            status: nextStatus,
+            at: new Date().toISOString(),
+          }),
+        },
+      });
       return placed.orderId;
     }
 
@@ -470,7 +509,7 @@ export async function openRxcoreOrder(input: {
     return null;
   }
 
-  // Eventide lines without a live API key must not look fulfilled in production.
+  // Eventide-class lines without a live API key must not look fulfilled in production.
   if (rxLines.length && (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production")) {
     if (process.env.ALLOW_SANDBOX_PHARMACY !== "1") {
       const message =
@@ -483,24 +522,56 @@ export async function openRxcoreOrder(input: {
     }
   }
 
-  const rxcoreOrderId = `EVT-${randomBytes(4).toString("hex").toUpperCase()}`;
-  await prisma.order.update({ where: { id: order.id }, data: { rxcoreOrderId, status: "submitted" } });
-  await audit({ action: "eventide.order_opened_sandbox", object: order.id, after: rxcoreOrderId });
+  // Local/dev only: invent EVT-* when pharmacy sandbox is explicitly allowed.
+  // Never mint these when Eventide is configured — that masked RND skips as "placed".
+  if (rxLines.length && !eventideConfigured() && process.env.ALLOW_SANDBOX_PHARMACY === "1") {
+    const rxcoreOrderId = `EVT-${randomBytes(4).toString("hex").toUpperCase()}`;
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        rxcoreOrderId,
+        status: "submitted",
+        splitMessage: "Sandbox pharmacy id (ALLOW_SANDBOX_PHARMACY) — not on VitaRelay.",
+      },
+    });
+    await audit({ action: "eventide.order_opened_sandbox", object: order.id, after: rxcoreOrderId });
+    await emitOrderEvent(order.id, "order.received");
+    return rxcoreOrderId;
+  }
+
+  if (rxLines.length) {
+    const message =
+      "Could not place Eventide/VitaRelay lines (API not configured or patient missing). Order held.";
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { status: "on_hold", placementError: message, splitMessage: message },
+    });
+    return null;
+  }
+
+  // Non-pharmacy lines (devices/supplies) — no VitaRelay order id.
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { status: order.status === "submitted" ? "received" : order.status },
+  });
   await emitOrderEvent(order.id, "order.received");
-  return rxcoreOrderId;
+  return null;
 }
 
 /** Re-submit an on-hold / missing-Eventide order to the Practice API. */
 export async function retryEventideSubmission(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) return { ok: false as const, error: "Order not found." };
+  const liveRemoteId = [order.rxhereOrderId, order.rxcoreOrderId].find(
+    (id) => id?.trim() && !isSandboxPharmacyOrderId(id),
+  );
   const alreadyPlaced =
-    order.rxhereOrderId?.trim() &&
+    liveRemoteId &&
     order.escriptStatus !== "pending_eventide_network" &&
     order.status !== "awaiting_prescription" &&
     order.status !== "on_hold";
   if (alreadyPlaced) {
-    return { ok: true as const, orderId: order.rxhereOrderId, duplicate: true as const };
+    return { ok: true as const, orderId: liveRemoteId, duplicate: true as const };
   }
   if (!eventideConfigured()) {
     return { ok: false as const, error: "EVENTIDE_API_KEY / VITARELAY_API_KEY is not configured." };
@@ -510,6 +581,20 @@ export async function retryEventideSubmission(orderId: string) {
   if (!patient) patient = await buildPatientFromOrder(order);
   if (!patient?.firstName || !patient?.address?.line1) {
     return { ok: false as const, error: "Order is missing patient details needed for Eventide." };
+  }
+
+  // Clear fake EVT-* so a retry can store the real VitaRelay id.
+  if (isSandboxPharmacyOrderId(order.rxcoreOrderId) || isSandboxPharmacyOrderId(order.rxhereOrderId)) {
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        rxcoreOrderId: "",
+        rxhereOrderId: "",
+        status: "on_hold",
+        placementError: "Retrying VitaRelay placement (previous id was local sandbox).",
+        splitMessage: "Retrying VitaRelay placement…",
+      },
+    });
   }
 
   const products = await prisma.product.findMany({
@@ -545,19 +630,26 @@ export async function retryEventideSubmission(orderId: string) {
       prescription: {
         patient,
         shippingMethod: order.shippingMethod === "OVERNIGHT" ? "OVERNIGHT" : "2_DAY",
+        shippingDestinationType:
+          order.shipDestination === "PRACTICE" || /office|practice/i.test(order.shipDestination || "")
+            ? "practice_office"
+            : "patient_direct",
         platformProductIdBySku,
       },
     });
-    await prisma.order.update({
-      where: { id: order.id },
-      data: { splitMessage: "", placementError: "", status: "submitted" },
-    });
+    if (!eventideOrderId || isSandboxPharmacyOrderId(eventideOrderId)) {
+      const refreshed = await prisma.order.findUnique({ where: { id: order.id } });
+      return {
+        ok: false as const,
+        error: refreshed?.placementError || "VitaRelay placement did not return a live order id.",
+      };
+    }
     return { ok: true as const, orderId: eventideOrderId, duplicate: false as const };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Eventide resubmit failed.";
     await prisma.order.update({
       where: { id: order.id },
-      data: { placementError: message, splitMessage: message },
+      data: { placementError: message, splitMessage: message, status: "on_hold" },
     });
     return { ok: false as const, error: message };
   }
