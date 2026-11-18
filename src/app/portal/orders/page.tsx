@@ -33,7 +33,7 @@ export default async function OrdersPage({
               { invoiceNumber: { contains: query, mode: "insensitive" } },
               { partnerExternalRef: { contains: query, mode: "insensitive" } },
               { trackingNumber: { contains: query, mode: "insensitive" } },
-              { rxhereOrderId: { contains: query, mode: "insensitive" } },
+              { eventideOrderId: { contains: query, mode: "insensitive" } },
               { clinicalPatient: { fullName: { contains: query, mode: "insensitive" } } },
               { clinicalPatient: { email: { contains: query, mode: "insensitive" } } },
             ],
@@ -173,7 +173,7 @@ export default async function OrdersPage({
                             <span className="muted">{order.trackingNumber}</span>
                           )
                         ) : (
-                          <span className="muted">{order.rxhereOrderId || order.rxcoreOrderId || "No tracking yet"}</span>
+                          <span className="muted">{order.eventideOrderId || order.rxcoreOrderId || "No tracking yet"}</span>
                         )}
                       </td>
                       <td>{order._count.lines}</td>

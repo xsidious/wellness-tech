@@ -60,12 +60,6 @@ export type PlacePrescriptionInput = {
   webhookUrl?: string;
 };
 
-/** @deprecated Use Eventide* types — kept for call-site compatibility during rename. */
-export type RxHereAddress = EventideAddress;
-export type RxHerePatient = EventidePatient;
-export type RxHerePrescriber = EventidePrescriber;
-export type RxHereItem = EventideItem;
-
 const EVENT_STATUS: Record<string, string> = {
   COMPOUNDING: "compounding",
   QA_PENDING: "verified",
@@ -116,7 +110,7 @@ export function pharmacyPaymentMessage(status: string | null | undefined, paymen
 }
 
 function baseUrl() {
-  // Eventide / VitaRelay Practice API only — RxHere is not used.
+  // Eventide / VitaRelay Practice API only.
   return (
     process.env.EVENTIDE_API_BASE_URL ||
     process.env.VITARELAY_PRACTICE_API_BASE_URL ||
@@ -159,11 +153,6 @@ export function eventideFallbackImage(input: { name?: string; form?: string; cat
   return EVENTIDE_CDN.powder;
 }
 
-/** @deprecated */
-export function rxhereConfigured() {
-  return eventideConfigured();
-}
-
 function placedByUserId() {
   return (
     process.env.EVENTIDE_PLACED_BY_USER_ID?.trim() ||
@@ -197,11 +186,6 @@ export async function eventideFetch(path: string, init: RequestInit = {}) {
     data = { raw: text };
   }
   return { ok: response.ok, status: response.status, data };
-}
-
-/** @deprecated */
-export async function rxhereFetch(path: string, init: RequestInit = {}) {
-  return eventideFetch(path, init);
 }
 
 function isUuid(value: string) {
@@ -1220,9 +1204,7 @@ function hmacBase64(secret: string | Buffer, payload: string) {
 export function verifyEventideWebhookSecret(request: Request, rawBody?: string) {
   const expected =
     process.env.EVENTIDE_WEBHOOK_SECRET?.trim() ||
-    process.env.VITARELAY_WEBHOOK_SECRET?.trim() ||
-    // Legacy alias only — RxHere is not an active partner.
-    process.env.RXHERE_WEBHOOK_SECRET?.trim();
+    process.env.VITARELAY_WEBHOOK_SECRET?.trim();
   if (!expected) return false;
 
   // Shared-secret header style (legacy)
@@ -1285,7 +1267,7 @@ export async function notifyKianStatus(payload: {
   event: string;
   occurredAt?: string;
   reason?: string;
-  rxhereOrderId?: string;
+  eventideOrderId?: string;
   /** Originating clinic site key (kian-prive, facial-design, …). */
   partnerSite?: string;
 }) {
@@ -1378,7 +1360,7 @@ function trackingUrlFromPayload(trackingNumber?: string | null, trackingUrl?: st
 export async function refreshOrderFromEventide(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) return { ok: false as const, error: "Order not found." };
-  const remoteId = order.rxhereOrderId || order.rxcoreOrderId;
+  const remoteId = order.eventideOrderId || order.rxcoreOrderId;
   if (!remoteId) return { ok: false as const, error: "No VitaRelay order id on this order yet." };
   // Local sandbox ids were minted when RND/non-503 lines skipped Practice API placement.
   if (/^EVT-[0-9A-F]{6,}$/i.test(remoteId.trim())) {
@@ -1441,7 +1423,7 @@ export async function refreshOrderFromEventide(orderId: string) {
     carrier: trackingCarrier || undefined,
     trackingUrl: trackingUrl || undefined,
     event: `poll.${remoteStatus || status}`,
-    rxhereOrderId: remoteId,
+    eventideOrderId: remoteId,
     partnerSite: order.source || undefined,
   });
 
@@ -1456,9 +1438,6 @@ export async function simulateEventideOrder(remoteOrderId: string, event?: strin
     body: JSON.stringify(event ? { event } : {}),
   });
 }
-
-/** @deprecated use verifyEventideWebhookSecret */
-export const verifyRxHereWebhookSecret = verifyEventideWebhookSecret;
 
 export async function ingestEventideWebhook(body: string, request: Request) {
   if (!verifyEventideWebhookSecret(request, body)) {
@@ -1524,7 +1503,7 @@ export async function ingestEventideWebhook(body: string, request: Request) {
       include: { lines: true, org: true },
     })) ||
     (await prisma.order.findFirst({
-      where: { OR: [{ rxhereOrderId: reference }, { rxcoreOrderId: reference }] },
+      where: { OR: [{ eventideOrderId: reference }, { rxcoreOrderId: reference }] },
       include: { lines: true, org: true },
     }));
 
@@ -1556,7 +1535,7 @@ export async function ingestEventideWebhook(body: string, request: Request) {
       trackingCarrier,
       trackingUrl,
       lastWebhookAt: new Date(),
-      rxhereOrderId: payload.logisticsReference || payload.data?.order_id || order.rxhereOrderId,
+      eventideOrderId: payload.logisticsReference || payload.data?.order_id || order.eventideOrderId,
       placementError: "",
     },
   });
@@ -1610,12 +1589,10 @@ export async function ingestEventideWebhook(body: string, request: Request) {
     event,
     occurredAt: payload.occurredAt,
     reason: payload.reason || undefined,
-    rxhereOrderId: payload.logisticsReference || payload.data?.order_id || order.rxhereOrderId || undefined,
+    eventideOrderId: payload.logisticsReference || payload.data?.order_id || order.eventideOrderId || undefined,
     partnerSite: order.source || undefined,
   });
 
   return { ok: true as const, duplicate: false, status };
 }
 
-/** @deprecated use ingestEventideWebhook */
-export const ingestRxHereWebhook = ingestEventideWebhook;

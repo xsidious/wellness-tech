@@ -19,7 +19,7 @@ export async function POST(request: Request, ctx: Ctx) {
     (await prisma.order.findFirst({ where: { invoiceNumber: id } })) ||
     (await prisma.order.findFirst({ where: { partnerExternalRef: id } })) ||
     (await prisma.order.findFirst({
-      where: { OR: [{ rxhereOrderId: id }, { rxcoreOrderId: id }] },
+      where: { OR: [{ eventideOrderId: id }, { rxcoreOrderId: id }] },
     }));
 
   if (!order) return NextResponse.json({ ok: false, error: "Order not found." }, { status: 404 });
@@ -30,7 +30,7 @@ export async function POST(request: Request, ctx: Ctx) {
     );
   }
 
-  const remoteId = order.rxhereOrderId || order.rxcoreOrderId;
+  const remoteId = order.eventideOrderId || order.rxcoreOrderId;
   if (!remoteId) {
     return NextResponse.json({ ok: false, error: "No VitaRelay order id on this order." }, { status: 400 });
   }
@@ -59,8 +59,8 @@ export async function POST(request: Request, ctx: Ctx) {
     externalRef: order.partnerExternalRef || order.invoiceNumber,
     status: "cancelled",
     event: "order.cancelled",
-    rxhereOrderId: remoteId,
+    eventideOrderId: remoteId,
   });
 
-  return NextResponse.json({ ok: true, status: "cancelled", orderId: order.id, rxhereOrderId: remoteId });
+  return NextResponse.json({ ok: true, status: "cancelled", orderId: order.id, eventideOrderId: remoteId });
 }

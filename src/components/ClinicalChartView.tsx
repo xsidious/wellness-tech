@@ -59,7 +59,7 @@ export function ClinicalChartView({
   totalCents,
   subtotalCents,
   shippingFeeCents,
-  rxhereOrderId,
+  eventideOrderId,
   partnerExternalRef,
   notes,
 }: {
@@ -86,7 +86,7 @@ export function ClinicalChartView({
   totalCents: number;
   subtotalCents: number;
   shippingFeeCents: number;
-  rxhereOrderId?: string | null;
+  eventideOrderId?: string | null;
   partnerExternalRef?: string | null;
   notes?: string | null;
 }) {
@@ -119,7 +119,7 @@ export function ClinicalChartView({
         <div className="chart-pills">
           <span className="pill">{paymentStatus}</span>
           {partnerExternalRef ? <span className="pill">KIAN {partnerExternalRef}</span> : null}
-          {rxhereOrderId ? <span className="pill">Fulfillment {rxhereOrderId}</span> : null}
+          {eventideOrderId ? <span className="pill">Fulfillment {eventideOrderId}</span> : null}
           {chart.intake?.status ? <span className="pill">Intake {String(chart.intake.status)}</span> : null}
           {signatures.length ? <span className="pill">{signatures.length} signature{signatures.length === 1 ? "" : "s"}</span> : null}
         </div>

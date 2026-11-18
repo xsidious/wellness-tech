@@ -14,7 +14,7 @@ function loadEnv() {
 
 const env = loadEnv();
 const key =
-  env.VITARELAY_API_KEY || env.EVENTIDE_API_KEY || env.RXHERE_API_TOKEN || "";
+  env.VITARELAY_API_KEY || env.EVENTIDE_API_KEY || env.EVENTIDE_API_TOKEN || "";
 const base = (
   env.VITARELAY_PRACTICE_API_BASE_URL ||
   env.EVENTIDE_API_BASE_URL ||

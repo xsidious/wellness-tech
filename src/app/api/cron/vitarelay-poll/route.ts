@@ -18,12 +18,12 @@ export async function GET(request: Request) {
 
   const open = await prisma.order.findMany({
     where: {
-      rxhereOrderId: { not: "" },
+      eventideOrderId: { not: "" },
       status: { notIn: ["delivered", "cancelled"] },
     },
     orderBy: { createdAt: "desc" },
     take: 25,
-    select: { id: true, invoiceNumber: true, rxhereOrderId: true },
+    select: { id: true, invoiceNumber: true, eventideOrderId: true },
   });
 
   const results: Array<{ id: string; invoiceNumber: string; ok: boolean; status?: string; error?: string }> = [];

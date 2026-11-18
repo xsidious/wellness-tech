@@ -1120,7 +1120,6 @@ export async function syncEventideFormularyAction() {
 }
 
 /** @deprecated use syncEventideFormularyAction */
-export const syncRxHereFormularyAction = syncEventideFormularyAction;
 
 export async function syncPrescribeUsaCatalogAction() {
   const userId = await readUserId();
@@ -1333,7 +1332,7 @@ export async function cancelEventideOrderAction(formData: FormData) {
   if (["shipped", "delivered", "cancelled"].includes(order.status)) {
     redirect(`${base}?error=${encodeURIComponent("This order can no longer be cancelled.")}`);
   }
-  const remoteId = order.rxhereOrderId || order.rxcoreOrderId;
+  const remoteId = order.eventideOrderId || order.rxcoreOrderId;
   if (!remoteId) redirect(`${base}?error=${encodeURIComponent("No VitaRelay order id to cancel.")}`);
   const { cancelOrder, notifyKianStatus } = await import("@/lib/eventide");
   const result = await cancelOrder(remoteId);
@@ -1354,7 +1353,7 @@ export async function cancelEventideOrderAction(formData: FormData) {
     externalRef: order.partnerExternalRef || order.invoiceNumber,
     status: "cancelled",
     event: "order.cancelled",
-    rxhereOrderId: remoteId,
+    eventideOrderId: remoteId,
     partnerSite: order.source || undefined,
   });
   redirect(`${base}?cancelled=1`);

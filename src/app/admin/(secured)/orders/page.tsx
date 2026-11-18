@@ -25,7 +25,7 @@ export default async function AdminOrdersPage({
             OR: [
               { invoiceNumber: { contains: query, mode: "insensitive" } },
               { partnerExternalRef: { contains: query, mode: "insensitive" } },
-              { rxhereOrderId: { contains: query, mode: "insensitive" } },
+              { eventideOrderId: { contains: query, mode: "insensitive" } },
               { trackingNumber: { contains: query, mode: "insensitive" } },
               { clinicalPatient: { fullName: { contains: query, mode: "insensitive" } } },
               { clinicalPatient: { email: { contains: query, mode: "insensitive" } } },
@@ -131,7 +131,7 @@ export default async function AdminOrdersPage({
                         <StatusBadge tone={statusTone(escript)}>{escript}</StatusBadge>
                       </td>
                       <td>
-                        {order.pharmacy?.name || order.rxhereOrderId || "—"}
+                        {order.pharmacy?.name || order.eventideOrderId || "—"}
                         {order.trackingNumber ? <div className="muted">{order.trackingNumber}</div> : null}
                       </td>
                       <td>

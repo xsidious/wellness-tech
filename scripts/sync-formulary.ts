@@ -1,8 +1,8 @@
-import { syncRxHereFormulary } from "../src/lib/formulary-sync";
+import { syncEventideFormulary } from "../src/lib/formulary-sync";
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
-  const result = await syncRxHereFormulary("script");
+  const result = await syncEventideFormulary("script");
   console.log(JSON.stringify(result));
   if (!result.ok) process.exitCode = 1;
 }

@@ -84,7 +84,7 @@ export default async function AdminOrderDetail({
         </div>
         <div className="ws-relation-step">
           <span>Fulfillment</span>
-          <strong>{order.pharmacy?.name || order.rxhereOrderId || "Unrouted"}</strong>
+          <strong>{order.pharmacy?.name || order.eventideOrderId || "Unrouted"}</strong>
           <span className="muted">
             <StatusBadge tone={statusTone(order.status)}>{order.status}</StatusBadge>{" "}
             <StatusBadge tone={statusTone(order.paymentStatus)}>{order.paymentStatus}</StatusBadge>
@@ -109,7 +109,7 @@ export default async function AdminOrderDetail({
         }
       >
         <p>
-          <b>Eventide order:</b> {order.rxhereOrderId || "—"}
+          <b>Eventide order:</b> {order.eventideOrderId || "—"}
         </p>
         <p>
           <b>Tracking:</b>{" "}
@@ -127,7 +127,7 @@ export default async function AdminOrderDetail({
           )}
         </p>
         <div className="ws-head-actions" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
-          {(order.rxhereOrderId || order.rxcoreOrderId) &&
+          {(order.eventideOrderId || order.rxcoreOrderId) &&
           !["shipped", "delivered", "cancelled"].includes(order.status) ? (
             <form action={cancelEventideOrderAction}>
               <input type="hidden" name="orderId" value={order.id} />
@@ -136,7 +136,7 @@ export default async function AdminOrderDetail({
               </button>
             </form>
           ) : null}
-          {order.rxhereOrderId || order.rxcoreOrderId ? (
+          {order.eventideOrderId || order.rxcoreOrderId ? (
             <form action={refreshEventideOrderAction}>
               <input type="hidden" name="orderId" value={order.id} />
               <button className="btn btn-ghost" type="submit">
@@ -144,7 +144,7 @@ export default async function AdminOrderDetail({
               </button>
             </form>
           ) : null}
-          {!order.rxhereOrderId && (order.placementError || order.status === "on_hold") ? (
+          {!order.eventideOrderId && (order.placementError || order.status === "on_hold") ? (
             <form action={retryEventideOrderAction}>
               <input type="hidden" name="orderId" value={order.id} />
               <button className="btn btn-accent" type="submit">
@@ -169,7 +169,7 @@ export default async function AdminOrderDetail({
         totalCents={order.totalCents}
         subtotalCents={order.subtotalCents}
         shippingFeeCents={order.shippingFeeCents}
-        rxhereOrderId={order.rxhereOrderId}
+        eventideOrderId={order.eventideOrderId}
         partnerExternalRef={order.partnerExternalRef}
         notes={order.notes}
       />

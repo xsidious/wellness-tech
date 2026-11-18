@@ -53,16 +53,10 @@ function buildName(row: FormularyRow) {
 }
 
 function loadLocalFormulary(): FormularyRow[] {
-  const candidates = [
-    resolve(process.cwd(), "data/eventide-formulary.json"),
-    resolve(process.cwd(), "data/rxhere-formulary.json"), // legacy filename only
-  ];
-  for (const path of candidates) {
-    if (!existsSync(path)) continue;
-    const rows = JSON.parse(readFileSync(path, "utf8")) as FormularyRow[];
-    if (Array.isArray(rows) && rows.length) return rows;
-  }
-  return [];
+  const path = resolve(process.cwd(), "data/eventide-formulary.json");
+  if (!existsSync(path)) return [];
+  const rows = JSON.parse(readFileSync(path, "utf8")) as FormularyRow[];
+  return Array.isArray(rows) && rows.length ? rows : [];
 }
 
 function fillMissingPricesFromLocal(rows: FormularyRow[]): FormularyRow[] {
@@ -253,7 +247,6 @@ export async function syncEventideFormulary(actorId = "") {
 }
 
 /** @deprecated use syncEventideFormulary */
-export const syncRxHereFormulary = syncEventideFormulary;
 
 /** Disable legacy local-formulary SKUs that are not VitaRelay UUIDs (keeps PrescribeUSA). */
 export async function blockLegacyNonEventideProducts() {

@@ -3,9 +3,14 @@ import { prisma } from "@/lib/prisma";
 
 /** Seed default network partners if the Pharmacy table is empty. */
 export async function ensurePharmacyNetwork() {
-  // Strip legacy RxHere branding from any existing pharmacy rows.
+  // Strip any residual legacy pharmacy branding from retired partners.
   await prisma.pharmacy.updateMany({
-    where: { name: { contains: "RxHere", mode: "insensitive" } },
+    where: {
+      OR: [
+        { name: { contains: "RxHere", mode: "insensitive" } },
+        { name: { equals: "Rx Here", mode: "insensitive" } },
+      ],
+    },
     data: {
       name: "Eventide / VitaRelay Network",
       description:

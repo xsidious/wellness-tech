@@ -7,7 +7,6 @@ function material(name: "SESSION_SECRET" | "FIELD_KEY" | "RXCORE_WEBHOOK_SECRET"
           process.env.RXCORE_WEBHOOK_SECRET,
           process.env.EVENTIDE_WEBHOOK_SECRET,
           process.env.VITARELAY_WEBHOOK_SECRET,
-          process.env.RXHERE_WEBHOOK_SECRET,
         ]
       : [process.env[name]];
   const value = aliases.map((v) => String(v || "").trim()).find((v) => v.length >= 16) || "";

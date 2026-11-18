@@ -18,7 +18,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     (await prisma.order.findFirst({ where: { invoiceNumber: id } })) ||
     (await prisma.order.findFirst({ where: { partnerExternalRef: id } })) ||
     (await prisma.order.findFirst({
-      where: { OR: [{ rxhereOrderId: id }, { rxcoreOrderId: id }] },
+      where: { OR: [{ eventideOrderId: id }, { rxcoreOrderId: id }] },
     }));
 
   if (!order) return NextResponse.json({ ok: false, error: "Order not found." }, { status: 404 });
@@ -33,7 +33,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     trackingNumber: order.trackingNumber || null,
     carrier: order.trackingCarrier || null,
     trackingUrl: order.trackingUrl || null,
-    rxhereOrderId: order.rxhereOrderId || null,
+    eventideOrderId: order.eventideOrderId || null,
     lastWebhookAt: order.lastWebhookAt?.toISOString() || null,
     placementError: order.placementError || null,
     fulfillment: {

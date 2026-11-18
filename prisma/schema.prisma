@@ -256,8 +256,8 @@ model Order {
   subtotalCents      Int
   totalCents         Int
   rxcoreOrderId      String   @default("")
-  rxhereOrderId      String   @default("")
-  rxhereBatchId      String   @default("")
+  eventideOrderId      String   @default("")
+  eventideBatchId      String   @default("")
   partnerExternalRef String   @default("")
   shippingMethod     String   @default("2_DAY")
   shipDestination    String   @default("PRACTICE")
@@ -287,7 +287,7 @@ model Order {
   settlementLines    SettlementLine[]
 
   @@index([partnerExternalRef])
-  @@index([rxhereOrderId])
+  @@index([eventideOrderId])
   @@index([kianIntakeId])
   @@index([clinicalPatientId])
   @@index([pharmacyId])

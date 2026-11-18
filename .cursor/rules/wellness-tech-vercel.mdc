@@ -23,7 +23,7 @@ alwaysApply: true
 
 ## Hard rules
 
-- Deploy, env (`RESEND_*`, DB, RxHere, KIAN partner), and domains for Wellness Tech go to **Alen’s `wellnesstechdist`**.
+- Deploy, env (`RESEND_*`, DB, Eventide/VitaRelay, PrescribeUSA, KIAN partner), and domains for Wellness Tech go to **Alen’s `wellnesstechdist`**.
 - Do **not** treat beelzebub’s `wellnesstechdistribution` as WT production.
 - Do **not** create new Vercel projects or move WT domains unless the user explicitly asks (`no-unsolicited-vercel-projects.mdc`).
 - Prefer Git push to `xsidious/wellnesstechdist` for production deploys. Archive/`vercel deploy` only if Git integration fails and the user asked to deploy.

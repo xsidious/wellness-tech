@@ -53,7 +53,6 @@ export async function POST(request: Request) {
     orderId: order.id,
     invoiceNumber: order.invoiceNumber,
     eventideOrderId: result.orderId,
-    rxhereOrderId: result.orderId,
     duplicate: result.duplicate,
     status: refreshed?.status || "submitted",
   });

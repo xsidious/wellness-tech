@@ -247,7 +247,7 @@ export default async function PatientChartPage({
           totalCents={latest.totalCents}
           subtotalCents={latest.subtotalCents}
           shippingFeeCents={latest.shippingFeeCents}
-          rxhereOrderId={latest.rxhereOrderId}
+          eventideOrderId={latest.eventideOrderId}
           partnerExternalRef={latest.partnerExternalRef}
           notes={latest.notes}
         />

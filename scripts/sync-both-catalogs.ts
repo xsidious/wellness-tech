@@ -1,9 +1,9 @@
-import { syncPrescribeUsaCatalog, syncRxHereFormulary } from "../src/lib/formulary-sync";
+import { syncPrescribeUsaCatalog, syncEventideFormulary } from "../src/lib/formulary-sync";
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
   console.log("Syncing Eventide…");
-  const eventide = await syncRxHereFormulary("script");
+  const eventide = await syncEventideFormulary("script");
   console.log(JSON.stringify(eventide));
   if (!eventide.ok) process.exitCode = 1;
 

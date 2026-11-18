@@ -351,7 +351,7 @@ export async function openRxcoreOrder(input: {
               escriptStatus: "pending_eventide_network",
               pharmacyId: eventidePharmacy?.id || undefined,
               rxcoreOrderId: requested.requestId,
-              rxhereOrderId: requested.requestId,
+              eventideOrderId: requested.requestId,
               placementError: "",
               splitMessage: `Waiting for Eventide doctor network to issue/sign the prescription (script request ${requested.requestId || "pending"}). Pharmacy fills after they sign.`,
               prescriberJson: JSON.stringify({
@@ -483,8 +483,8 @@ export async function openRxcoreOrder(input: {
         where: { id: order.id },
         data: {
           rxcoreOrderId: placed.orderId,
-          rxhereOrderId: placed.orderId,
-          rxhereBatchId: placed.batchId || "",
+          eventideOrderId: placed.orderId,
+          eventideBatchId: placed.batchId || "",
           status: nextStatus,
           escriptStatus: "issued_by_eventide",
           splitMessage: `${payNote}${sandboxNote}${providerNote}`.trim(),
@@ -586,7 +586,7 @@ export async function openRxcoreOrder(input: {
 export async function retryEventideSubmission(orderId: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) return { ok: false as const, error: "Order not found." };
-  const liveRemoteId = [order.rxhereOrderId, order.rxcoreOrderId].find(
+  const liveRemoteId = [order.eventideOrderId, order.rxcoreOrderId].find(
     (id) => id?.trim() && !isSandboxPharmacyOrderId(id),
   );
   const alreadyPlaced =
@@ -608,12 +608,12 @@ export async function retryEventideSubmission(orderId: string) {
   }
 
   // Clear fake EVT-* so a retry can store the real VitaRelay id.
-  if (isSandboxPharmacyOrderId(order.rxcoreOrderId) || isSandboxPharmacyOrderId(order.rxhereOrderId)) {
+  if (isSandboxPharmacyOrderId(order.rxcoreOrderId) || isSandboxPharmacyOrderId(order.eventideOrderId)) {
     await prisma.order.update({
       where: { id: order.id },
       data: {
         rxcoreOrderId: "",
-        rxhereOrderId: "",
+        eventideOrderId: "",
         status: "on_hold",
         placementError: "Retrying VitaRelay placement (previous id was local sandbox).",
         splitMessage: "Retrying VitaRelay placement…",
@@ -680,7 +680,6 @@ export async function retryEventideSubmission(orderId: string) {
 }
 
 /** @deprecated use retryEventideSubmission */
-export const retryRxHereSubmission = retryEventideSubmission;
 
 export async function createExternalOrder(input: { orgId: string; userId: string; sku: string; qty: number; source: string }) {
   const org = await prisma.organization.findUnique({ where: { id: input.orgId } });

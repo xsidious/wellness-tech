@@ -3,22 +3,22 @@ import { getOrderStatus, refreshOrderFromEventide } from "../src/lib/eventide";
 
 async function main() {
   const order = await prisma.order.findFirst({
-    where: { rxhereOrderId: { not: "" } },
+    where: { eventideOrderId: { not: "" } },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
       invoiceNumber: true,
-      rxhereOrderId: true,
+      eventideOrderId: true,
       status: true,
       trackingNumber: true,
     },
   });
   console.log("latest", order);
-  if (!order?.rxhereOrderId) {
+  if (!order?.eventideOrderId) {
     console.log("No prior VitaRelay order to poll — live placement deferred (no vr_test_ key).");
     return;
   }
-  const remote = await getOrderStatus(order.rxhereOrderId);
+  const remote = await getOrderStatus(order.eventideOrderId);
   console.log("remote", { ok: remote.ok, status: remote.status, data: remote.data });
   const refreshed = await refreshOrderFromEventide(order.id);
   console.log("refreshed", refreshed);

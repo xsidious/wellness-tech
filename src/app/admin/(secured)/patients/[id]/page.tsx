@@ -101,7 +101,7 @@ export default async function AdminPatientChart({ params }: { params: Promise<{ 
           totalCents={latest.totalCents}
           subtotalCents={latest.subtotalCents}
           shippingFeeCents={latest.shippingFeeCents}
-          rxhereOrderId={latest.rxhereOrderId}
+          eventideOrderId={latest.eventideOrderId}
           partnerExternalRef={latest.partnerExternalRef}
           notes={latest.notes}
         />
@@ -143,7 +143,7 @@ export default async function AdminPatientChart({ params }: { params: Promise<{ 
                     <td className="muted">
                       {order.lines.map((l) => `${l.name} ×${l.qty}`).join("; ") || "—"}
                     </td>
-                    <td className="muted">{order.pharmacy?.name || order.rxhereOrderId || "—"}</td>
+                    <td className="muted">{order.pharmacy?.name || order.eventideOrderId || "—"}</td>
                     <td>
                       <StatusBadge tone={statusTone(order.escriptStatus || "n/a")}>{order.escriptStatus || "n/a"}</StatusBadge>
                     </td>

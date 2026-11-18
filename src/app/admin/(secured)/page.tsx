@@ -257,7 +257,7 @@ export default async function AdminHome() {
                         {order.escriptStatus || "n/a"}
                       </StatusBadge>
                     </td>
-                    <td className="muted">{order.pharmacy?.name || order.rxhereOrderId || "—"}</td>
+                    <td className="muted">{order.pharmacy?.name || order.eventideOrderId || "—"}</td>
                     <td>{money(order.totalCents)}</td>
                   </tr>
                 );

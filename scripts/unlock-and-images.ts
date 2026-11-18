@@ -1,4 +1,4 @@
-import { syncPrescribeUsaCatalog, syncRxHereFormulary } from "../src/lib/formulary-sync";
+import { syncPrescribeUsaCatalog, syncEventideFormulary } from "../src/lib/formulary-sync";
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
@@ -10,7 +10,7 @@ async function main() {
   console.log(JSON.stringify({ unlocked: unlocked.count }));
 
   console.log("Syncing Eventide (prices + images)…");
-  const eventide = await syncRxHereFormulary("script");
+  const eventide = await syncEventideFormulary("script");
   console.log(JSON.stringify(eventide));
 
   console.log("Syncing PrescribeUSA…");

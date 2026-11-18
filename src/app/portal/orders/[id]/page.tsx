@@ -91,7 +91,7 @@ export default async function OrderDetail({
         <div className="ws-stat">
           <span className="ws-stat-label">VitaRelay</span>
           <strong className="ws-stat-value" style={{ fontSize: "1.05rem" }}>
-            {order.rxhereOrderId || order.pharmacy?.name || "Unassigned"}
+            {order.eventideOrderId || order.pharmacy?.name || "Unassigned"}
           </strong>
         </div>
         <div className="ws-stat">
@@ -125,7 +125,7 @@ export default async function OrderDetail({
       </div>
 
       <div className="ws-head-actions" style={{ flexWrap: "wrap", gap: 8 }}>
-        {(order.rxhereOrderId || order.rxcoreOrderId) && !["shipped", "delivered", "cancelled"].includes(order.status) ? (
+        {(order.eventideOrderId || order.rxcoreOrderId) && !["shipped", "delivered", "cancelled"].includes(order.status) ? (
           <form action={cancelEventideOrderAction}>
             <input type="hidden" name="orderId" value={order.id} />
             <button className="btn btn-ghost" type="submit">
@@ -133,7 +133,7 @@ export default async function OrderDetail({
             </button>
           </form>
         ) : null}
-        {order.rxhereOrderId || order.rxcoreOrderId ? (
+        {order.eventideOrderId || order.rxcoreOrderId ? (
           <form action={refreshEventideOrderAction}>
             <input type="hidden" name="orderId" value={order.id} />
             <button className="btn btn-ghost" type="submit">
@@ -141,7 +141,7 @@ export default async function OrderDetail({
             </button>
           </form>
         ) : null}
-        {!order.rxhereOrderId && (order.placementError || order.status === "on_hold") ? (
+        {!order.eventideOrderId && (order.placementError || order.status === "on_hold") ? (
           <form action={retryEventideOrderAction}>
             <input type="hidden" name="orderId" value={order.id} />
             <button className="btn btn-accent" type="submit">
@@ -204,7 +204,7 @@ export default async function OrderDetail({
         totalCents={order.totalCents}
         subtotalCents={order.subtotalCents}
         shippingFeeCents={order.shippingFeeCents}
-        rxhereOrderId={order.rxhereOrderId}
+        eventideOrderId={order.eventideOrderId}
         partnerExternalRef={order.partnerExternalRef}
         notes={order.notes}
       />

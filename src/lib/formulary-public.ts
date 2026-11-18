@@ -25,7 +25,7 @@ function applyGlpNaming(text: string) {
 }
 
 export function loadPublicFormulary(): PublicFormularyRow[] {
-  const path = resolve(process.cwd(), "data/rxhere-formulary.json");
+  const path = resolve(process.cwd(), "data/eventide-formulary.json");
   if (!existsSync(path)) return [];
   const rows = JSON.parse(readFileSync(path, "utf8")) as {
     sku?: string;

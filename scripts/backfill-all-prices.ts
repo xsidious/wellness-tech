@@ -1,7 +1,7 @@
 /**
  * Fill Eventide + PrescribeUSA practice prices from every source we have:
  * 1) VitaRelay public catalog price_cents
- * 2) Local rxhere-formulary.json (wholesale dollars)
+ * 2) Local eventide-formulary.json (wholesale dollars)
  * 3) PrescribeUSA pens catalog
  *
  * Remaining Eventide zeros get a category median fallback so the marketplace
@@ -82,7 +82,7 @@ async function fetchPublicPrices() {
 }
 
 function loadLocalFormularyPrices() {
-  const path = resolve(process.cwd(), "data/rxhere-formulary.json");
+  const path = resolve(process.cwd(), "data/eventide-formulary.json");
   const rows = JSON.parse(readFileSync(path, "utf8")) as Array<{
     sku?: string;
     medication?: string;

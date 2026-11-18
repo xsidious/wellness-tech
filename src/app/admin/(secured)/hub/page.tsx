@@ -42,12 +42,12 @@ export default async function HubControlPage({
       prisma.order.count({ where: { escriptStatus: "pending_signature" } }),
       prisma.pharmacy.findFirst({ where: { name: { contains: "Eventide", mode: "insensitive" } } }),
       prisma.order.findFirst({
-        where: { rxhereOrderId: { not: "" } },
+        where: { eventideOrderId: { not: "" } },
         orderBy: { createdAt: "desc" },
-        select: { rxhereOrderId: true, invoiceNumber: true, status: true },
+        select: { eventideOrderId: true, invoiceNumber: true, status: true },
       }),
     ]);
-  const eventide = await probeEventideReadiness(latestVrOrder?.rxhereOrderId || undefined);
+  const eventide = await probeEventideReadiness(latestVrOrder?.eventideOrderId || undefined);
 
   const kian = sites.find((s) => s.slug === "kian-prive");
   const remote = kian ? readRemoteMetrics(kian.remoteMetricsJson) : {};
@@ -182,7 +182,7 @@ export default async function HubControlPage({
           />
           <StatTile
             label="Eventide pharmacy"
-            value={eventidePharmacy?.name?.replace(/rxhere/gi, "Eventide") || "Eventide / VitaRelay"}
+            value={eventidePharmacy?.name?.replace(/eventide/gi, "Eventide") || "Eventide / VitaRelay"}
             hint={eventidePharmacy?.region || "VitaRelay routes fulfillment"}
           />
         </div>
@@ -325,7 +325,7 @@ export default async function HubControlPage({
                     </td>
                     <td>{String(row.distributionStatus || "—")}</td>
                     <td>
-                      <code>{String(row.rxhereOrderId || "—").slice(0, 12)}</code>
+                      <code>{String(row.eventideOrderId || "—").slice(0, 12)}</code>
                     </td>
                     <td>{money(Number(row.totalCents || 0))}</td>
                   </tr>

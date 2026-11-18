@@ -107,7 +107,7 @@ export async function POST(request: Request) {
   const existing = await prisma.order.findFirst({ where: { partnerExternalRef: externalRef } });
   if (existing) {
     // Already created — if pharmacy never accepted, resubmit to Eventide instead of no-oping.
-    if (!existing.rxhereOrderId?.trim()) {
+    if (!existing.eventideOrderId?.trim()) {
       const { retryEventideSubmission } = await import("@/lib/rxcore");
       const retried = await retryEventideSubmission(existing.id);
       if (!retried.ok) {
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
         orderId: existing.id,
         duplicate: true,
         invoiceNumber: existing.invoiceNumber,
-        rxhereOrderId: retried.orderId,
+        eventideOrderId: retried.orderId,
         status: refreshed?.status || "submitted",
       });
     }
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       orderId: existing.id,
       duplicate: true,
       invoiceNumber: existing.invoiceNumber,
-      rxhereOrderId: existing.rxhereOrderId,
+      eventideOrderId: existing.eventideOrderId,
       status: existing.status,
     });
   }
@@ -394,13 +394,13 @@ export async function POST(request: Request) {
     });
     const refreshed = await prisma.order.findUnique({
       where: { id: order.id },
-      select: { status: true, splitMessage: true, rxhereOrderId: true },
+      select: { status: true, splitMessage: true, eventideOrderId: true },
     });
     return NextResponse.json({
       ok: true,
       orderId: order.id,
       invoiceNumber: order.invoiceNumber,
-      rxhereOrderId: refreshed?.rxhereOrderId || rxcoreOrderId,
+      eventideOrderId: refreshed?.eventideOrderId || rxcoreOrderId,
       status: refreshed?.status || "submitted",
       pharmacyNote: refreshed?.splitMessage || "",
     });
