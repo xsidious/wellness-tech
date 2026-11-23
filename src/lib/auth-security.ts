@@ -44,8 +44,8 @@ export async function authTimingPad() {
 }
 
 export function assertStrongPassword(password: string) {
-  if (password.length < 10) {
-    return { ok: false as const, error: "Password must be at least 10 characters." };
+  if (password.length < 12) {
+    return { ok: false as const, error: "Password must be at least 12 characters." };
   }
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
     return { ok: false as const, error: "Password needs upper and lower case letters." };

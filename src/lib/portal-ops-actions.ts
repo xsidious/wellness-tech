@@ -9,6 +9,7 @@ import { sendTransactionalEmail } from "@/lib/email";
 import { requireUser, rolesOf } from "@/lib/guard";
 import { notifyOrg } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
+import { assertStrongPassword } from "@/lib/auth-security";
 
 function appUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || "https://www.wellnesstechdistribution.com").replace(/\/$/, "");
@@ -28,8 +29,9 @@ export async function claimInvitePassword(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const pin = String(formData.get("pin") || "").trim();
-  if (!email.includes("@") || password.length < 10) {
-    redirect("/claim-account?error=Password+must+be+10%2B+characters");
+  const strong = assertStrongPassword(password);
+  if (!email.includes("@") || !strong.ok) {
+    redirect(`/claim-account?error=${encodeURIComponent(strong.ok ? "Enter a valid email" : strong.error)}`);
   }
   if (!/^\d{6}$/.test(pin)) redirect("/claim-account?error=PIN+must+be+6+digits");
 

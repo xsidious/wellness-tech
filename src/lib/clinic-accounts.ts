@@ -82,7 +82,7 @@ export async function provisionClinicPortalAccounts(options?: {
           name: seed.name,
           roles: JSON.stringify(["owner", "prescriber"]),
           passwordHash: await bcrypt.hash(password, 12),
-          mfaHash: await bcrypt.hash(pin, 10),
+          mfaHash: await bcrypt.hash(pin, 12),
           mfaEnabled: true,
         },
       });
@@ -110,7 +110,7 @@ export async function provisionClinicPortalAccounts(options?: {
       }
       if (options?.resetPasswords || !user.passwordHash) {
         patch.passwordHash = await bcrypt.hash(password, 12);
-        patch.mfaHash = await bcrypt.hash(pin, 10);
+        patch.mfaHash = await bcrypt.hash(pin, 12);
         patch.mfaEnabled = true;
         reset = true;
       }
